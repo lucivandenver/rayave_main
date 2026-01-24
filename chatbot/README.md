@@ -1,9 +1,9 @@
 # RayAve Assistant (Groq)
 
 1. **Environment variables** (never commit your actual key):
-   - `GROQ_API_KEY` – your Groq secret key (example: `gsk_xxx`).
-   - `GROQ_API_BASE` – defaults to `https://api.groq.com/openai/v1`.
-   - `GROQ_MODEL` – defaults to `llama-3.3-70b-versatile`.
+   - `GROQ_API_KEY` – your Groq secret key (example: ``).
+   - `GROQ_API_BASE` – defaults to ``.
+   - `GROQ_MODEL` – defaults to ``.
 
    On Windows PowerShell you can set the key for the current session with:
    ```powershell

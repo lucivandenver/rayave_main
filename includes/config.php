@@ -11,15 +11,15 @@ define('DB_PASS', '');
 define('DB_NAME', 'flowershop');
 
 if (!defined('GROQ_API_BASE')) {
-    define('GROQ_API_BASE', getenv('GROQ_API_BASE') ?: 'GROQ_API_BASE');
+    define('GROQ_API_BASE', getenv('GROQ_API_BASE') ?: '');
 }
 
 if (!defined('GROQ_MODEL')) {
-    define('GROQ_MODEL', getenv('GROQ_MODEL') ?: 'GROQ_MODEL');
+    define('GROQ_MODEL', getenv('GROQ_MODEL') ?: '');
 }
 
 if (!defined('GROQ_API_KEY')) {
-    define('GROQ_API_KEY', getenv('GROQ_API_KEY') ?: 'GROQ_API_KEY');
+    define('GROQ_API_KEY', getenv('GROQ_API_KEY') ?: '');
 }
 
 if (!defined('AUTO_CANCEL_PENDING_MIN_HOURS')) {

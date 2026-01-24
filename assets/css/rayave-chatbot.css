@@ -1,0 +1,277 @@
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@500;600&display=swap');
+
+:root {
+    --rayave-chatbot-green: #0f8f62;
+    --rayave-chatbot-green-soft: #16c07a;
+    --rayave-chatbot-cream: #f5fff8;
+    --rayave-chatbot-shadow: 0 20px 35px rgba(6, 66, 46, 0.18);
+}
+
+.rayave-chatbot,
+.rayave-chatbot * {
+    box-sizing: border-box;
+}
+
+.rayave-chatbot {
+    position: fixed;
+    bottom: 120px;
+    right: 24px;
+    width: 360px;
+    max-width: calc(100vw - 32px);
+    font-family: 'Manrope', 'Segoe UI', system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition: opacity 0.25s ease, transform 0.25s ease;
+    z-index: 1200;
+}
+
+.rayave-chatbot--open {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+}
+
+.rayave-chatbot__card {
+    background: #ffffff;
+    border-radius: 26px;
+    box-shadow: var(--rayave-chatbot-shadow);
+    overflow: hidden;
+    border: 1px solid rgba(7, 77, 53, 0.08);
+    display: flex;
+    flex-direction: column;
+    max-height: 520px;
+}
+
+.rayave-chatbot__header {
+    background: linear-gradient(135deg, var(--rayave-chatbot-green), #0c5a3f);
+    color: #ffffff;
+    padding: 16px 20px;
+    position: relative;
+    border-top-left-radius: 26px;
+    border-top-right-radius: 26px;
+}
+
+.rayave-chatbot__header::after {
+    display: none;
+}
+
+.rayave-chatbot__meta {
+    font-size: 0.85rem;
+    opacity: 0.85;
+}
+
+.rayave-chatbot__close {
+    background: rgba(255, 255, 255, 0.18);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    color: #ffffff;
+    width: 32px;
+    height: 32px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+}
+
+.rayave-chatbot__close:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.25);
+}
+
+.rayave-chatbot__body {
+    padding: 20px 22px 18px;
+    background: var(--rayave-chatbot-cream);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    flex: 1 1 auto;
+    min-height: 360px;
+    max-height: 400px;
+    overflow: hidden;
+}
+
+.rayave-chatbot__thread {
+    flex: 1 1 auto;
+    min-height: 160px;
+    overflow-y: auto;
+    padding-right: 6px;
+}
+
+.rayave-chatbot__thread::-webkit-scrollbar {
+    width: 6px;
+}
+
+.rayave-chatbot__thread::-webkit-scrollbar-thumb {
+    background: rgba(7, 77, 53, 0.25);
+    border-radius: 4px;
+}
+
+.rayave-chatbot__bubble {
+    margin-bottom: 14px;
+    display: flex;
+}
+
+.rayave-chatbot__bubble-text {
+    padding: 12px 16px;
+    border-radius: 18px;
+    font-size: 0.95rem;
+    line-height: 1.4;
+}
+
+.rayave-chatbot__bubble--assistant .rayave-chatbot__bubble-text {
+    background: #ffffff;
+    color: #0b422d;
+    border-bottom-left-radius: 4px;
+    box-shadow: 0 10px 25px rgba(11, 66, 45, 0.08);
+}
+
+.rayave-chatbot__bubble--user {
+    justify-content: flex-end;
+}
+
+.rayave-chatbot__bubble--user .rayave-chatbot__bubble-text {
+    background: linear-gradient(135deg, var(--rayave-chatbot-green), var(--rayave-chatbot-green-soft));
+    color: #ffffff;
+    border-bottom-right-radius: 4px;
+}
+
+.rayave-chatbot__chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-shrink: 0;
+}
+
+.rayave-chatbot__chip {
+    border: 1px solid rgba(6, 66, 46, 0.25);
+    background: rgba(255, 255, 255, 0.8);
+    border-radius: 999px;
+    padding: 7px 14px;
+    font-size: 0.85rem;
+    color: #11503a;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.rayave-chatbot__chip:hover {
+    border-color: transparent;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(11, 66, 45, 0.15);
+}
+
+.rayave-chatbot__form {
+    background: #ffffff;
+    border-radius: 18px;
+    padding: 8px;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.rayave-chatbot__input {
+    flex: 1;
+    border: none;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(6, 66, 46, 0.06);
+    font-size: 0.95rem;
+}
+
+.rayave-chatbot__input:focus {
+    outline: 2px solid rgba(15, 143, 98, 0.4);
+    background: #ffffff;
+}
+
+.rayave-chatbot__send {
+    border: none;
+    width: 42px;
+    height: 42px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, var(--rayave-chatbot-green), var(--rayave-chatbot-green-soft));
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.rayave-chatbot__send:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 20px rgba(11, 66, 45, 0.25);
+}
+
+.rayave-chatbot__launcher {
+    position: fixed;
+    bottom: 28px;
+    right: 24px;
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    border: none;
+    background: linear-gradient(135deg, var(--rayave-chatbot-green), var(--rayave-chatbot-green-soft));
+    box-shadow: 0 15px 25px rgba(7, 77, 53, 0.35);
+    color: #ffffff;
+    font-size: 1.4rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    z-index: 1200;
+}
+
+.rayave-chatbot__launcher::after {
+    content: '';
+    position: absolute;
+    inset: auto auto -10px -10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(22, 192, 122, 0.55), rgba(22, 192, 122, 0));
+    filter: blur(4px);
+}
+
+.rayave-chatbot__launcher:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 0 18px 40px rgba(7, 77, 53, 0.45);
+}
+
+.rayave-chatbot__launcher--active {
+    background: #ffffff;
+    color: var(--rayave-chatbot-green);
+}
+
+.rayave-chatbot__status-dot {
+    display: none;
+}
+
+@media (max-width: 575px) {
+    .rayave-chatbot {
+        width: calc(100vw - 24px);
+        right: 12px;
+        bottom: 110px;
+    }
+
+    .rayave-chatbot__header {
+        padding: 18px;
+    }
+
+    .rayave-chatbot__body {
+        padding: 16px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .rayave-chatbot,
+    .rayave-chatbot__launcher,
+    .rayave-chatbot__send {
+        transition: none;
+    }
+}

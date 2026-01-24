@@ -1,0 +1,29 @@
+[
+  {
+    "id": "placeholder-1",
+    "full_name": "Isabel Cruz",
+    "product_name": "Sunlit Tides Bouquet",
+    "location": "Roxas, Oriental Mindoro",
+    "rating": 5,
+    "comment": "RaymundoAvenue rescued my sister's surprise party. The bouquet arrived fresh, fast, and wrapped like a gift.",
+    "created_at": "2025-07-12"
+  },
+  {
+    "id": "placeholder-2",
+    "full_name": "Coach Ramirez",
+    "product_name": "Emerald Luxe Centerpiece",
+    "location": "Calapan City",
+    "rating": 4,
+    "comment": "I booked them for our alumni banquet. Colors stayed vibrant all night and the team handled every detail.",
+    "created_at": "2025-08-03"
+  },
+  {
+    "id": "placeholder-3",
+    "full_name": "Mae Rivas",
+    "product_name": "Mindoro Fields Posy",
+    "location": "Pinamalayan",
+    "rating": 5,
+    "comment": "Ordered at 8 AM, picked up by lunch. Flowers were lush and smelled like a Sunday garden walk.",
+    "created_at": "2025-09-18"
+  }
+]

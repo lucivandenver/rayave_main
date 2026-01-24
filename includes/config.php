@@ -19,7 +19,7 @@ if (!defined('GROQ_MODEL')) {
 }
 
 if (!defined('GROQ_API_KEY')) {
-    define('GROQ_API_KEY', getenv('GROQ_API_KEY') ?: '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');
+    define('GROQ_API_KEY', getenv('GROQ_API_KEY') ?: 'GROQ_API_KEY');
 }
 
 if (!defined('AUTO_CANCEL_PENDING_MIN_HOURS')) {

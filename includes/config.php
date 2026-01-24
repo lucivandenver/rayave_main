@@ -11,11 +11,11 @@ define('DB_PASS', '');
 define('DB_NAME', 'flowershop');
 
 if (!defined('GROQ_API_BASE')) {
-    define('GROQ_API_BASE', getenv('GROQ_API_BASE') ?: 'https://api.groq.com/openai/v1');
+    define('GROQ_API_BASE', getenv('GROQ_API_BASE') ?: 'GROQ_API_BASE');
 }
 
 if (!defined('GROQ_MODEL')) {
-    define('GROQ_MODEL', getenv('GROQ_MODEL') ?: 'llama-3.3-70b-versatile');
+    define('GROQ_MODEL', getenv('GROQ_MODEL') ?: 'GROQ_MODEL');
 }
 
 if (!defined('GROQ_API_KEY')) {

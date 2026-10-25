@@ -1,0 +1,15 @@
+# Environment file (contains secrets and API keys)
+.env
+
+# Composer dependencies
+/vendor/
+
+# Logs and temporary files
+storage/logs/*.log
+*.log
+
+# Operating system files
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/

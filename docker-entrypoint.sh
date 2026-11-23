@@ -3,11 +3,20 @@ set -e
 
 PORT="${PORT:-80}"
 
-# Configure Apache to listen on dynamic $PORT (Railway sets $PORT; local Docker defaults to 80)
-printf 'Listen %s\n' "$PORT" > /etc/apache2/ports.conf
+# Listen on both 80 and $PORT (or 80 and 8080) so Railway Networking works whether target port is 80, 8080, or dynamic $PORT
+if [ "$PORT" = "80" ]; then
+    printf 'Listen 80\nListen 8080\n' > /etc/apache2/ports.conf
+    VHOST_BIND='*:80 *:8080'
+    echo "[entrypoint] Apache configured to listen on ports 80 and 8080"
+else
+    printf 'Listen 80\nListen %s\n' "$PORT" > /etc/apache2/ports.conf
+    VHOST_BIND="*:80 *:${PORT}"
+    echo "[entrypoint] Apache configured to listen on ports 80 and ${PORT}"
+fi
+
 printf '%s\n' \
     'ServerName localhost' \
-    "<VirtualHost *:${PORT}>" \
+    "<VirtualHost ${VHOST_BIND}>" \
     '    ServerAdmin webmaster@localhost' \
     '    DocumentRoot /var/www/html' \
     '    Alias /flowershop-main /var/www/html' \

@@ -32,30 +32,85 @@ if (file_exists($envFile)) {
     }
 }
 
-// Error reporting for development
+// Error reporting: show errors in local dev, log silently in Railway/production
+$isProductionEnv = (
+    getenv('RAILWAY_ENVIRONMENT') !== false
+    || getenv('RAILWAY_PUBLIC_DOMAIN') !== false
+    || strtolower((string) getenv('APP_ENV')) === 'production'
+);
 error_reporting(E_ALL);
-ini_set('display_errors', 1);
+ini_set('log_errors', '1');
+ini_set('display_errors', $isProductionEnv ? '0' : '1');
 
 if (function_exists('date_default_timezone_set')) {
     date_default_timezone_set(getenv('APP_TIMEZONE') ?: 'Asia/Manila');
 }
 
 $isDockerEnv = (getenv('DOCKER_ENV') === 'true' || file_exists('/.dockerenv'));
-$resolvedDbHost = getenv('DOCKER_DB_HOST') ?: (getenv('DB_HOST') ?: 'localhost');
-if ($isDockerEnv && ($resolvedDbHost === 'localhost' || $resolvedDbHost === '127.0.0.1')) {
+
+// Resolve database settings (supports Local Laragon, Docker Compose, and Railway MySQL)
+$urlHost = $urlPort = $urlUser = $urlPass = $urlName = null;
+$rawDbUrl = getenv('MYSQL_URL') ?: (getenv('DATABASE_URL') ?: '');
+if ($rawDbUrl !== '') {
+    $parsedUrl = @parse_url($rawDbUrl);
+    if (is_array($parsedUrl)) {
+        $urlHost = $parsedUrl['host'] ?? null;
+        $urlPort = isset($parsedUrl['port']) ? (string) $parsedUrl['port'] : null;
+        $urlUser = isset($parsedUrl['user']) ? rawurldecode($parsedUrl['user']) : null;
+        $urlPass = isset($parsedUrl['pass']) ? rawurldecode($parsedUrl['pass']) : null;
+        $urlName = isset($parsedUrl['path']) ? ltrim($parsedUrl['path'], '/') : null;
+    }
+}
+
+$resolvedDbHost = getenv('DOCKER_DB_HOST')
+    ?: (getenv('MYSQLHOST')
+        ?: ($urlHost ?: (getenv('DB_HOST') ?: 'localhost')));
+
+if (getenv('DOCKER_ENV') === 'true' && ($resolvedDbHost === 'localhost' || $resolvedDbHost === '127.0.0.1')) {
     $resolvedDbHost = 'db';
 }
 
+$resolvedDbPort = getenv('DOCKER_DB_PORT')
+    ?: (getenv('MYSQLPORT')
+        ?: ($urlPort ?: (getenv('DB_PORT') ?: '3306')));
+
+$resolvedDbUser = getenv('DOCKER_DB_USER')
+    ?: (getenv('MYSQLUSER')
+        ?: ($urlUser ?: (getenv('DB_USER') ?: 'root')));
+
+$resolvedDbPass = '';
+if (getenv('DOCKER_DB_PASS') !== false) {
+    $resolvedDbPass = (string) getenv('DOCKER_DB_PASS');
+} elseif (getenv('MYSQLPASSWORD') !== false) {
+    $resolvedDbPass = (string) getenv('MYSQLPASSWORD');
+} elseif ($urlPass !== null) {
+    $resolvedDbPass = (string) $urlPass;
+} elseif (getenv('DB_PASS') !== false) {
+    $resolvedDbPass = (string) getenv('DB_PASS');
+}
+
+$resolvedDbName = getenv('DOCKER_DB_NAME')
+    ?: (getenv('MYSQLDATABASE')
+        ?: ($urlName ?: (getenv('DB_NAME') ?: 'flowershop')));
+
 define('DB_HOST', $resolvedDbHost);
-define('DB_PORT', getenv('DOCKER_DB_PORT') ?: (getenv('DB_PORT') ?: '3306'));
-define('DB_USER', getenv('DOCKER_DB_USER') ?: (getenv('DB_USER') ?: 'root'));
-define('DB_PASS', getenv('DOCKER_DB_PASS') !== false ? getenv('DOCKER_DB_PASS') : (getenv('DB_PASS') !== false ? getenv('DB_PASS') : ''));
-define('DB_NAME', getenv('DOCKER_DB_NAME') ?: (getenv('DB_NAME') ?: 'flowershop'));
+define('DB_PORT', $resolvedDbPort);
+define('DB_USER', $resolvedDbUser);
+define('DB_PASS', $resolvedDbPass);
+define('DB_NAME', $resolvedDbName);
 
 if (!defined('APP_URL')) {
-    $resolvedAppUrl = getenv('DOCKER_APP_URL') ?: (getenv('APP_URL') ?: 'http://localhost/flowershop-main');
-    if ($isDockerEnv && !empty($_SERVER['HTTP_HOST'])) {
-        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $railwayDomain = trim((string) (getenv('RAILWAY_PUBLIC_DOMAIN') ?: ''));
+    $resolvedAppUrl = getenv('DOCKER_APP_URL')
+        ?: (getenv('APP_URL')
+            ?: ($railwayDomain !== '' ? 'https://' . $railwayDomain : 'http://localhost/flowershop-main'));
+
+    if (($isDockerEnv || $isProductionEnv) && !empty($_SERVER['HTTP_HOST'])) {
+        $forwardedProto = strtolower((string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''));
+        $isHttps = ($forwardedProto === 'https')
+            || (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || ($railwayDomain !== '');
+        $scheme = $isHttps ? 'https' : 'http';
         $basePath = str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/flowershop-main') ? '/flowershop-main' : '';
         $resolvedAppUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $basePath;
     }

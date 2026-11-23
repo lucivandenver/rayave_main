@@ -31,6 +31,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Enable Apache modules
 RUN a2enmod rewrite headers expires
 
+# Install MySQL client for automatic first-boot database seeding (e.g., Railway MySQL)
+RUN apt-get update && apt-get install -y --no-install-recommends default-mysql-client \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Configure Apache to serve both / and /flowershop-main
 RUN printf '%s\n' \
     'ServerName localhost' \
@@ -65,12 +70,17 @@ WORKDIR /var/www/html
 # Copy project files
 COPY . /var/www/html
 
-# Install Composer dependencies if vendor is missing
+# Install Composer dependencies if vendor is missing and prepare entrypoint
 RUN if [ ! -f vendor/autoload.php ]; then \
         composer install --no-dev --optimize-autoloader --no-interaction; \
     fi \
+    && cp /var/www/html/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh \
+    && sed -i 's/\r$//' /usr/local/bin/docker-entrypoint.sh \
+    && chmod +x /usr/local/bin/docker-entrypoint.sh \
     && mkdir -p /var/www/html/storage/logs /var/www/html/storage/support_attachments /var/www/html/storage/custom_designs /var/www/html/assets/images/products \
     && chown -R www-data:www-data /var/www/html/storage /var/www/html/assets/images \
     && chmod -R 775 /var/www/html/storage /var/www/html/assets/images
 
 EXPOSE 80
+
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]

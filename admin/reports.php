@@ -8,6 +8,7 @@ if (!isLoggedIn() || !isAdmin()) {
 $reportTypes = [
     'sales' => 'Sales Overview',
     'products' => 'Product Performance',
+    'perpiece' => 'Per-Piece Products',
     'customers' => 'Customer Insights',
     'cancellations' => 'Cancelled / Refunded Orders'
 ];
@@ -21,7 +22,7 @@ $periodOptions = [
 ];
 
 $type = $_GET['type'] ?? 'sales';
-$period = $_GET['period'] ?? 'monthly';
+$period = $_GET['period'] ?? 'daily';
 $customStart = $_GET['start'] ?? null;
 $customEnd = $_GET['end'] ?? null;
 
@@ -33,11 +34,17 @@ if (!isset($periodOptions[$period])) {
     $period = 'monthly';
 }
 
-$range = resolveReportRange($period, $customStart, $customEnd);
+$hasManualRange = $customStart && $customEnd;
+$range = $hasManualRange
+    ? resolveReportRange('custom', $customStart, $customEnd)
+    : resolveReportRange($period);
 
 switch ($type) {
     case 'products':
         $reportData = getProductPerformanceReport($range['start'], $range['end']);
+        break;
+    case 'perpiece':
+        $reportData = getPerPieceProductsReport($range['start'], $range['end']);
         break;
     case 'customers':
         $reportData = getCustomerInsightsReport($range['start'], $range['end']);
@@ -123,12 +130,12 @@ include 'includes/header.php';
                 <div class="col-md-2">
                     <label class="form-label">Start Date</label>
                     <input type="date" class="form-control" name="start" id="startDate"
-                        value="<?php echo htmlspecialchars($range['start_date']); ?>" <?php echo $period === 'custom' ? '' : 'disabled'; ?>>
+                        value="<?php echo htmlspecialchars($range['start_date']); ?>" max="<?php echo date('Y-m-d'); ?>">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label">End Date</label>
                     <input type="date" class="form-control" name="end" id="endDate"
-                        value="<?php echo htmlspecialchars($range['end_date']); ?>" <?php echo $period === 'custom' ? '' : 'disabled'; ?>>
+                        value="<?php echo htmlspecialchars($range['end_date']); ?>" max="<?php echo date('Y-m-d'); ?>">
                 </div>
                 <div class="col-md-1">
                     <button type="submit" class="btn btn-success w-100">
@@ -271,6 +278,97 @@ include 'includes/header.php';
                 <?php endif; ?>
             </div>
         </div>
+    <?php elseif ($type === 'perpiece'): ?>
+        <?php $perPieceSummary = $reportData['summary']; ?>
+        <div class="row mb-4">
+            <div class="col-md-3 mb-3">
+                <div class="card border-left-primary h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Per-Piece Items</p>
+                        <h4 class="mb-0"><?php echo number_format($perPieceSummary['total_items']); ?></h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-left-success h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Product Categories</p>
+                        <h4 class="mb-0"><?php echo number_format($perPieceSummary['total_categories']); ?></h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-left-info h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Units Consumed</p>
+                        <h4 class="mb-0"><?php echo number_format((float) $perPieceSummary['total_units_consumed'], 2); ?></h4>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3 mb-3">
+                <div class="card border-left-warning h-100">
+                    <div class="card-body">
+                        <p class="text-uppercase text-muted small mb-1">Linked Products</p>
+                        <h4 class="mb-0"><?php echo number_format($perPieceSummary['total_linked_products']); ?></h4>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <?php if (empty($reportData['categories'])): ?>
+            <div class="card shadow">
+                <div class="card-body">
+                    <p class="text-muted mb-0">No per-piece usage recorded for this range.</p>
+                </div>
+            </div>
+        <?php else: ?>
+            <?php foreach ($reportData['categories'] as $categoryGroup): ?>
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                        <h6 class="mb-0"><?php echo htmlspecialchars($categoryGroup['category_name']); ?></h6>
+                        <small class="text-muted"><?php echo number_format(count($categoryGroup['items'])); ?> item<?php echo count($categoryGroup['items']) === 1 ? '' : 's'; ?></small>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped align-middle mb-0">
+                                <thead>
+                                    <tr>
+                                        <th>Per-Piece Item</th>
+                                        <th>Linked Catalog Products</th>
+                                        <th class="text-center">Products</th>
+                                        <th class="text-center">Units Consumed</th>
+                                        <th class="text-center">Orders</th>
+                                        <th class="text-end">Revenue</th>
+                                        <th class="text-end">Last Used</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach ($categoryGroup['items'] as $row): ?>
+                                        <tr>
+                                            <td>
+                                                <div class="fw-semibold"><?php echo htmlspecialchars($row['name']); ?></div>
+                                                <div class="text-muted small">
+                                                    <?php echo htmlspecialchars(($row['category'] ?? '') !== '' ? $row['category'] : 'Uncategorized'); ?>
+                                                    <?php if (!empty($row['unit'])): ?>
+                                                        · Unit: <?php echo htmlspecialchars($row['unit']); ?>
+                                                    <?php endif; ?>
+                                                </div>
+                                            </td>
+                                            <td><?php echo htmlspecialchars($row['linked_products'] ?? ''); ?></td>
+                                            <td class="text-center"><?php echo (int) $row['linked_product_count']; ?></td>
+                                            <td class="text-center"><?php echo number_format((float) $row['units_consumed'], 2); ?></td>
+                                            <td class="text-center"><?php echo (int) $row['order_count']; ?></td>
+                                            <td class="text-end"><?php echo peso($row['revenue']); ?></td>
+                                            <td class="text-end"><?php echo !empty($row['last_used_at']) ? date('M j, Y', strtotime($row['last_used_at'])) : '-'; ?></td>
+                                        </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        <?php endif; ?>
     <?php elseif ($type === 'customers'): ?>
         <div class="card shadow">
             <div class="card-header bg-light">
@@ -348,16 +446,64 @@ include 'includes/header.php';
 
 <?php
 $pageScripts = '<script>
-const periodSelect = document.getElementById("periodSelect");
-const startInput = document.getElementById("startDate");
-const endInput = document.getElementById("endDate");
-function toggleDateInputs() {
-    const isCustom = periodSelect.value === "custom";
-    startInput.disabled = !isCustom;
-    endInput.disabled = !isCustom;
-}
-periodSelect.addEventListener("change", toggleDateInputs);
-toggleDateInputs();
+(function () {
+    var periodSelect = document.getElementById("periodSelect");
+    var startInput = document.getElementById("startDate");
+    var endInput = document.getElementById("endDate");
+
+    if (!periodSelect || !startInput || !endInput) {
+        return;
+    }
+
+    var pad = function (value) {
+        return value < 10 ? "0" + value : value.toString();
+    };
+
+    var formatDate = function (date) {
+        return date.getFullYear() + "-" + pad(date.getMonth() + 1) + "-" + pad(date.getDate());
+    };
+
+    var applyRange = function (range) {
+        if (!range) {
+            return;
+        }
+        startInput.value = range.start;
+        endInput.value = range.end;
+    };
+
+    var buildRangeFromPeriod = function (period) {
+        var today = new Date();
+        today.setHours(0, 0, 0, 0);
+        var start = new Date(today);
+        var end = new Date(today);
+
+        switch (period) {
+            case "daily":
+                break;
+            case "weekly":
+                start.setDate(start.getDate() - 6);
+                break;
+            case "monthly":
+                start = new Date(today.getFullYear(), today.getMonth(), 1);
+                break;
+            case "yearly":
+                start = new Date(today.getFullYear(), 0, 1);
+                break;
+            default:
+                return null;
+        }
+
+        return {
+            start: formatDate(start),
+            end: formatDate(end)
+        };
+    };
+
+    periodSelect.addEventListener("change", function () {
+        var range = buildRangeFromPeriod(periodSelect.value);
+        applyRange(range);
+    });
+})();
 </script>';
 
 include 'includes/footer.php';

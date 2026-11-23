@@ -11,39 +11,45 @@ if (isAdmin()) {
 }
 
 $userId = $_SESSION['user_id'];
+$isAjaxRequest = (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest')
+    || isset($_POST['ajax']) || isset($_GET['ajax']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $success = false;
+    $message = '';
+
     if (isset($_POST['delete_all'])) {
-        if (deleteAllNotifications($userId)) {
-            $_SESSION['success'] = 'All notifications deleted.';
-        } else {
-            $_SESSION['error'] = 'Unable to delete notifications right now.';
-        }
-        redirect('notifications.php');
+        $success = deleteAllNotifications($userId);
+        $message = $success ? 'All notifications deleted.' : 'Unable to delete notifications right now.';
     } elseif (isset($_POST['delete_notification_id'])) {
         $notificationId = (int) $_POST['delete_notification_id'];
-        if (deleteNotification($notificationId, $userId)) {
-            $_SESSION['success'] = 'Notification deleted.';
-        } else {
-            $_SESSION['error'] = 'Failed to delete notification.';
-        }
-        redirect('notifications.php');
+        $success = deleteNotification($notificationId, $userId);
+        $message = $success ? 'Notification deleted.' : 'Failed to delete notification.';
     } elseif (isset($_POST['mark_all'])) {
-        if (markAllNotificationsRead($userId)) {
-            $_SESSION['success'] = 'All notifications marked as read.';
-        } else {
-            $_SESSION['error'] = 'Unable to mark notifications as read right now.';
-        }
-        redirect('notifications.php');
+        $success = markAllNotificationsRead($userId);
+        $message = $success ? 'All notifications marked as read.' : 'Unable to mark notifications as read right now.';
     } elseif (isset($_POST['notification_id'])) {
         $notificationId = (int) $_POST['notification_id'];
-        if (markNotificationRead($notificationId, $userId)) {
-            $_SESSION['success'] = 'Notification marked as read.';
-        } else {
-            $_SESSION['error'] = 'Failed to update notification.';
-        }
-        redirect('notifications.php');
+        $success = markNotificationRead($notificationId, $userId);
+        $message = $success ? 'Notification marked as read.' : 'Failed to update notification.';
     }
+
+    if ($isAjaxRequest) {
+        header('Content-Type: application/json');
+        echo json_encode([
+            'success' => $success,
+            'message' => $message,
+            'unreadCount' => getUnreadNotificationCount($userId)
+        ]);
+        exit;
+    }
+
+    if ($success) {
+        $_SESSION['success'] = $message;
+    } elseif ($message) {
+        $_SESSION['error'] = $message;
+    }
+    redirect('notifications.php');
 }
 
 $notifications = getUserNotifications($userId);
@@ -59,12 +65,18 @@ include 'includes/header.php';
         </div>
         <?php if (!empty($notifications)): ?>
             <div class="d-flex flex-wrap gap-2">
-                <form method="POST">
+                <form method="POST" data-notification-form>
+                    <input type="hidden" name="mark_all" value="1">
                     <button type="submit" name="mark_all" class="btn btn-outline-secondary btn-sm">
                         Mark All as Read
                     </button>
                 </form>
-                <form method="POST" onsubmit="return confirm('Delete all notifications?');">
+                    <form method="POST"
+                        data-notification-form
+                        data-confirm="Delete all notifications?"
+                        data-confirm-variant="danger"
+                        data-confirm-accept="Delete All">
+                    <input type="hidden" name="delete_all" value="1">
                     <button type="submit" name="delete_all" class="btn btn-outline-danger btn-sm">
                         Delete All
                     </button>
@@ -72,20 +84,6 @@ include 'includes/header.php';
             </div>
         <?php endif; ?>
     </div>
-
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="alert alert-success">
-            <?php echo $_SESSION['success'];
-            unset($_SESSION['success']); ?>
-        </div>
-    <?php endif; ?>
-
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="alert alert-danger">
-            <?php echo $_SESSION['error'];
-            unset($_SESSION['error']); ?>
-        </div>
-    <?php endif; ?>
 
     <?php if (empty($notifications)): ?>
         <div class="alert alert-light border text-center py-5">
@@ -131,7 +129,10 @@ include 'includes/header.php';
                         <?php else: ?>
                             <span class="badge bg-secondary align-self-center">Read</span>
                         <?php endif; ?>
-                        <form method="POST" onsubmit="return confirm('Delete this notification?');">
+                        <form method="POST"
+                            data-confirm="Delete this notification?"
+                            data-confirm-variant="danger"
+                            data-confirm-accept="Delete">
                             <input type="hidden" name="delete_notification_id" value="<?php echo $notification['id']; ?>">
                             <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                         </form>

@@ -46,6 +46,8 @@ foreach ($popular_tags as $tag_string) {
 }
 arsort($all_tags);
 $popular_tags = array_slice(array_keys($all_tags), 0, 10);
+$isLoggedIn = isLoggedIn();
+$allowOutOfStockOrders = isOutOfStockOrderingEnabled();
 ?>
 
 <?php include 'includes/header.php'; ?>
@@ -240,10 +242,13 @@ $popular_tags = array_slice(array_keys($all_tags), 0, 10);
                     <div class="row">
                         <?php foreach ($products as $product): 
                             $rating_info = getAverageRating($product['id']);
-                            $isOutOfStock = $product['stock_quantity'] <= 0;
+                            $stockLevel = isset($product['stock_quantity']) ? (int) $product['stock_quantity'] : 0;
+                            $isZeroStock = $stockLevel <= 0;
+                            $isPreorderOnly = $allowOutOfStockOrders && $isZeroStock;
                             $isManuallyUnavailable = ($product['availability_status'] ?? 'available') !== 'available';
-                            $statusLabel = $isOutOfStock ? 'Out of Stock' : ($isManuallyUnavailable ? 'Unavailable' : '');
-                            $statusClass = $isOutOfStock ? 'bg-danger' : 'bg-secondary';
+                            $isOutOfStock = !$allowOutOfStockOrders && $isZeroStock;
+                            $statusLabel = $isPreorderOnly ? 'Preorder' : ($isOutOfStock ? 'Out of Stock' : ($isManuallyUnavailable ? 'Unavailable' : ''));
+                            $statusClass = $isPreorderOnly ? 'bg-warning text-dark' : ($isOutOfStock ? 'bg-danger' : 'bg-secondary');
                         ?>
                         <div class="col-xl-3 col-lg-4 col-md-6 mb-4">
                             <div class="card product-card h-100">
@@ -274,7 +279,7 @@ $popular_tags = array_slice(array_keys($all_tags), 0, 10);
                                     <div class="d-grid gap-2">
                                         <a href="product-detail.php?id=<?php echo $product['id']; ?>" 
                                            class="btn btn-outline-success btn-sm">View Details</a>
-                                        <?php if (isLoggedIn() && !$isOutOfStock && !$isManuallyUnavailable): ?>
+                                        <?php if ($isLoggedIn && !$isOutOfStock && !$isManuallyUnavailable): ?>
                                         <form method="POST" action="add-to-cart.php" class="d-grid">
                                             <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
                                             <input type="hidden" name="quantity" value="1">
@@ -301,10 +306,13 @@ $popular_tags = array_slice(array_keys($all_tags), 0, 10);
                 <?php if (!empty($products)): ?>
                     <?php foreach ($products as $product): 
                         $rating_info = getAverageRating($product['id']);
-                        $isOutOfStock = $product['stock_quantity'] <= 0;
+                        $stockLevel = isset($product['stock_quantity']) ? (int) $product['stock_quantity'] : 0;
+                        $isZeroStock = $stockLevel <= 0;
+                        $isPreorderOnly = $allowOutOfStockOrders && $isZeroStock;
                         $isManuallyUnavailable = ($product['availability_status'] ?? 'available') !== 'available';
-                        $statusLabel = $isOutOfStock ? 'Out of Stock' : ($isManuallyUnavailable ? 'Unavailable' : '');
-                        $statusClass = $isOutOfStock ? 'badge bg-danger' : 'badge bg-secondary';
+                        $isOutOfStock = !$allowOutOfStockOrders && $isZeroStock;
+                        $statusLabel = $isPreorderOnly ? 'Preorder' : ($isOutOfStock ? 'Out of Stock' : ($isManuallyUnavailable ? 'Unavailable' : ''));
+                        $statusClass = $isPreorderOnly ? 'badge bg-warning text-dark' : ($isOutOfStock ? 'badge bg-danger' : 'badge bg-secondary');
                     ?>
                     <div class="card mb-3">
                         <div class="row g-0">
@@ -338,7 +346,7 @@ $popular_tags = array_slice(array_keys($all_tags), 0, 10);
                                         <div class="btn-group">
                                             <a href="product-detail.php?id=<?php echo $product['id']; ?>" 
                                                class="btn btn-outline-success">View Details</a>
-                                            <?php if (isLoggedIn() && !$isOutOfStock && !$isManuallyUnavailable): ?>
+                                            <?php if ($isLoggedIn && !$isOutOfStock && !$isManuallyUnavailable): ?>
                                             <form method="POST" action="add-to-cart.php" class="d-inline">
                                                 <input type="hidden" name="product_id" value="<?php echo $product['id']; ?>">
                                                 <input type="hidden" name="quantity" value="1">

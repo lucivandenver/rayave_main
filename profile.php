@@ -1,6 +1,8 @@
 <?php
 require_once 'includes/config.php';
 require_once 'includes/functions.php';
+ensureUserSecurityColumns();
+ensureRewardsSystem();
 
 if (!isLoggedIn()) {
     redirect('login.php');
@@ -13,22 +15,44 @@ $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// Get user orders
-$stmt = $pdo->prepare("SELECT * FROM orders WHERE user_id = ? ORDER BY created_at DESC");
-$stmt->execute([$user_id]);
-$orders = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
 // Get user addresses
 $addresses = getUserAddresses($user_id);
+$rewardPoints = getUserRewardPoints($user_id);
+$qualifyingOrders = getUserQualifyingOrderCount($user_id);
+$currentRewardTier = getCurrentRewardTierForOrders($qualifyingOrders);
+$nextRewardTier = getNextRewardTierForOrders($qualifyingOrders);
+$ordersProgressPercent = 100;
+if ($nextRewardTier) {
+    $required = max(1, (int) $nextRewardTier['required_orders']);
+    $ordersProgressPercent = min(100, ($qualifyingOrders / $required) * 100);
+}
 
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_profile'])) {
     $full_name = $_POST['full_name'];
     $email = $_POST['email'];
     $phone = $_POST['phone'];
+    $birthday = trim((string) ($_POST['birthday'] ?? ''));
 
-    $stmt = $pdo->prepare("UPDATE users SET full_name = ?, email = ?, phone = ? WHERE id = ?");
-    if ($stmt->execute([$full_name, $email, $phone, $user_id])) {
+    if ($birthday !== '') {
+        $birthdayDate = DateTime::createFromFormat('Y-m-d', $birthday);
+        $isBirthdayValid = $birthdayDate && $birthdayDate->format('Y-m-d') === $birthday;
+
+        if (!$isBirthdayValid) {
+            $_SESSION['error'] = "Please provide a valid birthday.";
+            redirect('profile.php#profile');
+        }
+
+        if ($birthday > date('Y-m-d')) {
+            $_SESSION['error'] = "Birthday cannot be in the future.";
+            redirect('profile.php#profile');
+        }
+    } else {
+        $birthday = null;
+    }
+
+    $stmt = $pdo->prepare("UPDATE users SET full_name = ?, email = ?, phone = ?, birthday = ? WHERE id = ?");
+    if ($stmt->execute([$full_name, $email, $phone, $birthday, $user_id])) {
         $_SESSION['success'] = "Profile updated successfully!";
         redirect('profile.php');
     } else {
@@ -64,21 +88,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
 <?php include 'includes/header.php'; ?>
 
 <div class="container py-5">
-    <?php if (isset($_SESSION['success'])): ?>
-        <div class="alert alert-success alert-dismissible fade show" role="alert">
-            <?php echo $_SESSION['success']; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        <?php unset($_SESSION['success']); ?>
-    <?php endif; ?>
-
-    <?php if (isset($_SESSION['error'])): ?>
-        <div class="alert alert-danger alert-dismissible fade show" role="alert">
-            <?php echo $_SESSION['error']; ?>
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-        </div>
-        <?php unset($_SESSION['error']); ?>
-    <?php endif; ?>
     <div class="row">
         <!-- Sidebar -->
         <div class="col-lg-3 mb-4">
@@ -90,14 +99,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                     <a href="#profile" class="list-group-item list-group-item-action active" data-bs-toggle="tab">
                         <i class="fas fa-user me-2"></i>Profile
                     </a>
-                    <a href="#orders" class="list-group-item list-group-item-action" data-bs-toggle="tab">
-                        <i class="fas fa-shopping-bag me-2"></i>My Orders
-                    </a>
                     <a href="#addresses" class="list-group-item list-group-item-action" data-bs-toggle="tab">
                         <i class="fas fa-map-marker-alt me-2"></i>Addresses
                     </a>
                     <a href="#password" class="list-group-item list-group-item-action" data-bs-toggle="tab">
                         <i class="fas fa-lock me-2"></i>Change Password
+                    </a>
+                    <a href="rewards.php" class="list-group-item list-group-item-action">
+                        <i class="fas fa-gift me-2"></i>Rewards
                     </a>
                 </div>
             </div>
@@ -115,13 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                         <div class="card-body">
                             <form method="POST">
                                 <div class="row">
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label">Username</label>
-                                        <input type="text" class="form-control" value="<?php echo $user['username']; ?>"
-                                            readonly>
-                                        <small class="form-text text-muted">Username cannot be changed</small>
-                                    </div>
-                                    <div class="col-md-6 mb-3">
+                                    <div class="col-md-12 mb-3">
                                         <label class="form-label">Full Name</label>
                                         <input type="text" name="full_name" class="form-control"
                                             value="<?php echo $user['full_name'] ?? ''; ?>" required>
@@ -139,79 +142,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                                             value="<?php echo $user['phone'] ?? ''; ?>">
                                     </div>
                                 </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Birthday</label>
+                                        <input type="date" name="birthday" class="form-control"
+                                            max="<?php echo date('Y-m-d'); ?>"
+                                            value="<?php echo htmlspecialchars($user['birthday'] ?? '', ENT_QUOTES, 'UTF-8'); ?>">
+                                    </div>
+                                </div>
                                 <div class="mb-3">
                                     <label class="form-label">Member Since</label>
                                     <input type="text" class="form-control"
                                         value="<?php echo date('F j, Y', strtotime($user['created_at'])); ?>" readonly>
                                 </div>
+
+                                <div class="border rounded p-3 mb-3 bg-light">
+                                    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+                                        <h6 class="mb-0 text-success"><i class="fas fa-gift me-2"></i>Rewards Snapshot</h6>
+                                        <a href="rewards.php" class="btn btn-sm btn-outline-success">View Rewards</a>
+                                    </div>
+                                    <div class="small text-muted mb-2">
+                                        Points: <strong><?php echo (int) $rewardPoints; ?></strong> • Qualifying orders: <strong><?php echo (int) $qualifyingOrders; ?></strong>
+                                    </div>
+                                    <?php if ($currentRewardTier): ?>
+                                        <div class="small mb-2">Current unlocked tier: <strong><?php echo number_format((float) $currentRewardTier['discount_percent'], 2); ?>% off</strong> (<?php echo (int) $currentRewardTier['required_orders']; ?>+ orders)</div>
+                                    <?php else: ?>
+                                        <div class="small mb-2">No unlocked reward tier yet.</div>
+                                    <?php endif; ?>
+
+                                    <?php if ($nextRewardTier): ?>
+                                        <div class="small text-muted mb-1">
+                                            Next tier at <?php echo (int) $nextRewardTier['required_orders']; ?> orders (<?php echo number_format((float) $nextRewardTier['discount_percent'], 2); ?>% off)
+                                        </div>
+                                        <div class="progress" style="height: 10px;">
+                                            <div class="progress-bar bg-success" role="progressbar"
+                                                style="width: <?php echo number_format((float) $ordersProgressPercent, 2, '.', ''); ?>%;"
+                                                aria-valuenow="<?php echo (int) round($ordersProgressPercent); ?>" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                    <?php else: ?>
+                                        <div class="small text-success">You already unlocked the highest available tier.</div>
+                                    <?php endif; ?>
+                                </div>
                                 <button type="submit" name="update_profile" class="btn btn-success">Update
                                     Profile</button>
                             </form>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Orders Tab -->
-                <div class="tab-pane fade" id="orders">
-                    <div class="card">
-                        <div class="card-header bg-success text-white">
-                            <h5 class="mb-0">My Orders</h5>
-                        </div>
-                        <div class="card-body">
-                            <?php if (empty($orders)): ?>
-                                <div class="text-center py-4">
-                                    <i class="fas fa-shopping-bag fa-3x text-muted mb-3"></i>
-                                    <h5>No Orders Yet</h5>
-                                    <p class="text-muted">You haven't placed any orders yet.</p>
-                                    <a href="products.php" class="btn btn-success">Start Shopping</a>
-                                </div>
-                            <?php else: ?>
-                                <div class="table-responsive">
-                                    <table class="table table-hover">
-                                        <thead>
-                                            <tr>
-                                                <th>Order #</th>
-                                                <th>Date</th>
-                                                <th>Total</th>
-                                                <th>Status</th>
-                                                <th>Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            <?php foreach ($orders as $order): ?>
-                                                <tr>
-                                                    <td>#<?php echo $order['id']; ?></td>
-                                                    <td><?php echo date('M j, Y', strtotime($order['created_at'])); ?></td>
-                                                    <td>₱<?php echo number_format($order['total_amount'], 2); ?></td>
-                                                    <td>
-                                                        <span class="badge bg-<?php
-                                                        echo $order['status'] === 'delivered' ? 'success' :
-                                                            ($order['status'] === 'cancelled' ? 'danger' :
-                                                                ($order['status'] === 'pending' ? 'warning' : 'info'));
-                                                        ?>">
-                                                            <?php echo ucfirst($order['status']); ?>
-                                                        </span>
-                                                    </td>
-                                                    <td>
-                                                        <div class="d-flex flex-column flex-md-row gap-2">
-                                                            <a href="order-tracking.php?id=<?php echo $order['id']; ?>"
-                                                                class="btn btn-sm btn-outline-primary">View Details</a>
-                                                            <?php if ($order['status'] === 'pending'): ?>
-                                                                <button type="button" class="btn btn-sm btn-outline-danger"
-                                                                    data-bs-toggle="modal" data-bs-target="#cancelOrderModal"
-                                                                    data-order-id="<?php echo $order['id']; ?>"
-                                                                    data-redirect="profile.php#orders">
-                                                                    Cancel
-                                                                </button>
-                                                            <?php endif; ?>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            <?php endforeach; ?>
-                                        </tbody>
-                                    </table>
-                                </div>
-                            <?php endif; ?>
                         </div>
                     </div>
                 </div>
@@ -357,28 +331,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
     </div>
 </div>
 
-<!-- Cancel Order Modal -->
-<div class="modal fade" id="cancelOrderModal" tabindex="-1" aria-labelledby="cancelOrderLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <form method="POST" action="cancel-order.php" class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="cancelOrderLabel">Cancel Order</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-            </div>
-            <div class="modal-body">
-                <p class="mb-0">Cancelling will immediately stop processing and return stock to inventory. Are you sure?
-                </p>
-            </div>
-            <div class="modal-footer">
-                <input type="hidden" name="order_id" id="cancelOrderId">
-                <input type="hidden" name="redirect_to" id="cancelRedirect">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Keep Order</button>
-                <button type="submit" class="btn btn-danger">Cancel Order</button>
-            </div>
-        </form>
-    </div>
-</div>
-
 <script>
     // Tab functionality
     document.addEventListener('DOMContentLoaded', function () {
@@ -390,15 +342,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['change_password'])) {
                 const tabInstance = new bootstrap.Tab(tab);
                 tabInstance.show();
             }
-        }
-
-        const cancelModal = document.getElementById('cancelOrderModal');
-        if (cancelModal) {
-            cancelModal.addEventListener('show.bs.modal', function (event) {
-                const button = event.relatedTarget;
-                document.getElementById('cancelOrderId').value = button.getAttribute('data-order-id');
-                document.getElementById('cancelRedirect').value = button.getAttribute('data-redirect');
-            });
         }
     });
 </script>

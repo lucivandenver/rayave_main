@@ -7,19 +7,19 @@ if (!isLoggedIn()) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-    redirect('profile.php#orders');
+    redirect('my-orders.php');
 }
 
 $order_id = isset($_POST['order_id']) ? (int) $_POST['order_id'] : 0;
-$redirect_to = $_POST['redirect_to'] ?? 'profile.php#orders';
+$redirect_to = $_POST['redirect_to'] ?? 'my-orders.php';
 
 if ($order_id <= 0) {
     $_SESSION['error'] = 'Invalid order selection.';
-    redirect('profile.php#orders');
+    redirect('my-orders.php');
 }
 
 if (stripos($redirect_to, 'http') === 0) {
-    $redirect_to = 'profile.php#orders';
+    $redirect_to = 'my-orders.php';
 }
 
 $stmt = $pdo->prepare("SELECT id, status FROM orders WHERE id = ? AND user_id = ? LIMIT 1");
@@ -38,15 +38,6 @@ if ($order['status'] !== 'pending') {
 
 try {
     $pdo->beginTransaction();
-
-    $itemsStmt = $pdo->prepare("SELECT product_id, quantity FROM order_items WHERE order_id = ?");
-    $itemsStmt->execute([$order_id]);
-    $items = $itemsStmt->fetchAll(PDO::FETCH_ASSOC);
-
-    foreach ($items as $item) {
-        // Use existing "return" reason to avoid enum issues in inventory_logs
-        updateInventory($item['product_id'], $item['quantity'], 'return', "Customer cancelled order #$order_id");
-    }
 
     if (!updateOrderStatus($order_id, 'cancelled', 'Order cancelled by customer', false)) {
         throw new RuntimeException('Failed to update order status.');

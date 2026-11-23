@@ -1,5 +1,7 @@
 <?php
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 // Attempt to load Composer autoloader before anything else
 $composerAutoload = __DIR__ . '/../vendor/autoload.php';
@@ -21,7 +23,7 @@ if (file_exists($envFile)) {
             $key = trim($key);
             $val = trim($val);
             $val = trim($val, "\"'\t ");
-            if (!array_key_exists($key, $_SERVER) && !array_key_exists($key, $_ENV)) {
+            if (getenv($key) === false && !array_key_exists($key, $_SERVER) && !array_key_exists($key, $_ENV)) {
                 putenv("{$key}={$val}");
                 $_ENV[$key] = $val;
                 $_SERVER[$key] = $val;
@@ -38,13 +40,26 @@ if (function_exists('date_default_timezone_set')) {
     date_default_timezone_set(getenv('APP_TIMEZONE') ?: 'Asia/Manila');
 }
 
-define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
-define('DB_USER', getenv('DB_USER') ?: 'root');
-define('DB_PASS', getenv('DB_PASS') !== false ? getenv('DB_PASS') : '');
-define('DB_NAME', getenv('DB_NAME') ?: 'flowershop');
+$isDockerEnv = (getenv('DOCKER_ENV') === 'true' || file_exists('/.dockerenv'));
+$resolvedDbHost = getenv('DOCKER_DB_HOST') ?: (getenv('DB_HOST') ?: 'localhost');
+if ($isDockerEnv && ($resolvedDbHost === 'localhost' || $resolvedDbHost === '127.0.0.1')) {
+    $resolvedDbHost = 'db';
+}
+
+define('DB_HOST', $resolvedDbHost);
+define('DB_PORT', getenv('DOCKER_DB_PORT') ?: (getenv('DB_PORT') ?: '3306'));
+define('DB_USER', getenv('DOCKER_DB_USER') ?: (getenv('DB_USER') ?: 'root'));
+define('DB_PASS', getenv('DOCKER_DB_PASS') !== false ? getenv('DOCKER_DB_PASS') : (getenv('DB_PASS') !== false ? getenv('DB_PASS') : ''));
+define('DB_NAME', getenv('DOCKER_DB_NAME') ?: (getenv('DB_NAME') ?: 'flowershop'));
 
 if (!defined('APP_URL')) {
-    define('APP_URL', getenv('APP_URL') ?: 'http://localhost/flowershop-main');
+    $resolvedAppUrl = getenv('DOCKER_APP_URL') ?: (getenv('APP_URL') ?: 'http://localhost/flowershop-main');
+    if ($isDockerEnv && !empty($_SERVER['HTTP_HOST'])) {
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $basePath = str_starts_with($_SERVER['REQUEST_URI'] ?? '', '/flowershop-main') ? '/flowershop-main' : '';
+        $resolvedAppUrl = $scheme . '://' . $_SERVER['HTTP_HOST'] . $basePath;
+    }
+    define('APP_URL', $resolvedAppUrl);
 }
 
 if (!defined('MAIL_FROM_NAME')) {
@@ -96,11 +111,15 @@ if (!defined('GROQ_API_BASE')) {
 }
 
 if (!defined('GROQ_MODEL')) {
-    define('GROQ_MODEL', getenv('GROQ_MODEL') ?: 'llama-3.3-70b-versatile');
+    define('GROQ_MODEL', getenv('GROQ_MODEL') ?: 'openai/gpt-oss-120b');
 }
 
 if (!defined('GROQ_API_KEY')) {
-    define('GROQ_API_KEY', getenv('GROQ_API_KEY') ?: '');
+    $rawGroqKey = trim((string) (getenv('GROQ_API_KEY') ?: ''));
+    if (str_starts_with($rawGroqKey, 'gsgsk_')) {
+        $rawGroqKey = substr($rawGroqKey, 2);
+    }
+    define('GROQ_API_KEY', $rawGroqKey);
 }
 
 if (!defined('AUTO_CANCEL_PENDING_MIN_HOURS')) {
@@ -124,7 +143,8 @@ if (!defined('STORE_ORIGIN_LNG')) {
 }
 
 try {
-    $pdo = new PDO("mysql:host=" . DB_HOST . ";dbname=" . DB_NAME, DB_USER, DB_PASS);
+    $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4";
+    $pdo = new PDO($dsn, DB_USER, DB_PASS);
     $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 } catch (PDOException $e) {

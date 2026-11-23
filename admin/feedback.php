@@ -7,17 +7,17 @@ if (!isLoggedIn() || !isAdmin()) {
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['feedback_id'])) {
     $feedback_id = (int) $_POST['feedback_id'];
-    $status = $_POST['status'] ?? 'pending';
     $is_featured = isset($_POST['is_featured']) ? 1 : 0;
-    $comment = trim($_POST['comment'] ?? '');
+    $status = $_POST['status'] ?? 'pending';
+    $status = in_array($status, ['pending', 'published', 'hidden'], true) ? $status : 'pending';
     $notes = trim($_POST['admin_notes'] ?? '');
     $redirect_status = $_POST['status_filter'] ?? '';
     $redirect_page = max(1, (int) ($_POST['page'] ?? 1));
 
     try {
-        $stmt = $pdo->prepare("UPDATE customer_feedback SET comment = ?, status = ?, is_featured = ?, admin_notes = ?, updated_at = NOW() WHERE id = ?");
-        $stmt->execute([$comment, $status, $is_featured, $notes, $feedback_id]);
-        $_SESSION['success'] = 'Feedback updated successfully.';
+        $stmt = $pdo->prepare("UPDATE customer_feedback SET status = ?, is_featured = ?, admin_notes = ?, updated_at = NOW() WHERE id = ?");
+        $stmt->execute([$status, $is_featured, $notes, $feedback_id]);
+        $_SESSION['success'] = 'Feedback visibility updated successfully.';
     } catch (PDOException $e) {
         error_log('Admin feedback update error: ' . $e->getMessage());
         $_SESSION['error'] = 'Unable to update feedback.';
@@ -110,8 +110,8 @@ include 'includes/header.php';
                 <tbody>
                     <?php foreach ($feedback_entries as $entry): ?>
                         <tr>
-                            <td>
-                                <strong><?php echo htmlspecialchars($entry['full_name'] ?? $entry['username']); ?></strong><br>
+                                <td>
+                                <strong><?php echo htmlspecialchars($entry['full_name'] ?: 'Customer'); ?></strong><br>
                                 <small class="text-muted">Order #<?php echo $entry['order_id']; ?></small>
                             </td>
                             <td>
@@ -130,16 +130,16 @@ include 'includes/header.php';
                                     <input type="hidden" name="page" value="<?php echo $page; ?>">
                                     <div class="col-12">
                                         <label class="form-label small mb-1">Customer Comment</label>
-                                        <textarea name="comment" class="form-control" rows="2"
-                                            required><?php echo htmlspecialchars($entry['comment']); ?></textarea>
+                                        <div class="form-control bg-light" style="min-height: 70px;">
+                                            <?php echo nl2br(htmlspecialchars($entry['comment'])); ?>
+                                        </div>
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label small mb-1">Status</label>
                                         <select name="status" class="form-select form-select-sm">
                                             <option value="pending" <?php echo $entry['status'] === 'pending' ? 'selected' : ''; ?>>Pending</option>
                                             <option value="published" <?php echo $entry['status'] === 'published' ? 'selected' : ''; ?>>Published</option>
-                                            <option value="hidden" <?php echo $entry['status'] === 'hidden' ? 'selected' : ''; ?>>
-                                                Hidden</option>
+                                            <option value="hidden" <?php echo $entry['status'] === 'hidden' ? 'selected' : ''; ?>>Hidden</option>
                                         </select>
                                     </div>
                                     <div class="col-md-4">

@@ -9,8 +9,8 @@ if (!isLoggedIn()) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['product_id'])) {
-    $product_id = $_POST['product_id'];
-    $quantity = $_POST['quantity'] ?? 1;
+    $product_id = (int) $_POST['product_id'];
+    $quantity = max(1, (int) ($_POST['quantity'] ?? 1));
 
     // Validate quantity
     if ($quantity < 1) {
@@ -33,7 +33,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['product_id'])) {
         exit();
     }
 
-    if ($product['stock_quantity'] < $quantity || $product['stock_quantity'] <= 0) {
+    $allowOutOfStockOrders = isOutOfStockOrderingEnabled();
+
+    if (!$allowOutOfStockOrders && ($product['stock_quantity'] < $quantity || $product['stock_quantity'] <= 0)) {
         $_SESSION['error'] = "Not enough stock available";
         header("Location: " . ($_SERVER['HTTP_REFERER'] ?? 'products.php'));
         exit();

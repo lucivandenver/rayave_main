@@ -1,0 +1,31 @@
+{
+  "name": "RayAve",
+  "short_name": "RayAve",
+  "description": "RayAve Flower Shop - Beautiful flowers and handcrafted gifts.",
+  "start_url": "./index.php",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f5fff8",
+  "theme_color": "#0f8f62",
+  "icons": [
+    {
+      "src": "assets/icons/rayave-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/rayave-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "assets/icons/rayave-icon-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}

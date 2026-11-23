@@ -198,11 +198,11 @@ $featured_feedback = getCustomerFeedback(3, true);
                             <div class="d-flex justify-content-between align-items-start">
                                 <div>
                                     <div class="testimonial-avatar">
-                                        <?php echo strtoupper(substr($feedback['full_name'] ?? $feedback['username'], 0, 1)); ?>
+                                        <?php echo strtoupper(substr($feedback['full_name'] ?: ($feedback['email'] ?? 'C'), 0, 1)); ?>
                                     </div>
                                     <div class="mt-3">
                                         <h6 class="mb-0">
-                                            <?php echo htmlspecialchars($feedback['full_name'] ?? $feedback['username']); ?>
+                                            <?php echo htmlspecialchars($feedback['full_name'] ?: ($feedback['email'] ?? 'Customer')); ?>
                                         </h6>
                                         <small class="text-muted">Ordered
                                             <?php echo htmlspecialchars($feedback['product_name']); ?></small>

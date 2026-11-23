@@ -1,6 +1,15 @@
 // Main JavaScript for Bloomify Flower Shop
 
 document.addEventListener('DOMContentLoaded', function() {
+    var queueModalAlert = function (payload) {
+        window.__queuedAlerts = window.__queuedAlerts || [];
+        if (window.showGlobalAlert) {
+            window.showGlobalAlert(payload);
+        } else {
+            window.__queuedAlerts.push(payload);
+        }
+    };
+
     // Initialize tooltips
     const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
     const tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
@@ -11,15 +20,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const popoverTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="popover"]'));
     const popoverList = popoverTriggerList.map(function (popoverTriggerEl) {
         return new bootstrap.Popover(popoverTriggerEl);
-    });
-
-    // Auto-dismiss alerts after 5 seconds
-    const alerts = document.querySelectorAll('.alert');
-    alerts.forEach(function(alert) {
-        setTimeout(function() {
-            const bsAlert = new bootstrap.Alert(alert);
-            bsAlert.close();
-        }, 5000);
     });
 
     // Product quantity controls
@@ -88,7 +88,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const maxPrice = document.querySelector('input[name="max_price"]').value;
             
             if (minPrice && maxPrice && parseFloat(minPrice) > parseFloat(maxPrice)) {
-                alert('Minimum price cannot be greater than maximum price');
+                queueModalAlert({
+                    type: 'warning',
+                    title: 'Invalid Price Range',
+                    message: 'Minimum price cannot be greater than maximum price.'
+                });
                 input.value = '';
             }
         });
@@ -228,6 +232,99 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
+    function initCustomerNotificationSync() {
+        const bodyEl = document.body;
+        if (!bodyEl || bodyEl.dataset.userRole !== 'customer') {
+            return;
+        }
+
+        const badgeEl = document.querySelector('[data-notification-badge]');
+        const linkEl = document.querySelector('[data-customer-notification-link]');
+        const autoClearPages = ['notifications.php', 'order-tracking.php', 'contact.php'];
+        let markPromise = null;
+
+        const updateBadge = (count) => {
+            if (!badgeEl) {
+                return;
+            }
+            const parsed = Number(count) || 0;
+            if (parsed > 0) {
+                badgeEl.textContent = parsed;
+                badgeEl.classList.remove('d-none');
+            } else {
+                badgeEl.textContent = '';
+                badgeEl.classList.add('d-none');
+            }
+        };
+
+        const markCustomerNotificationsRead = (options = {}) => {
+            if (!badgeEl) {
+                return Promise.resolve();
+            }
+
+            const currentCount = Number(badgeEl.textContent) || 0;
+            const force = options.force === true;
+
+            if (!force && currentCount === 0) {
+                return Promise.resolve();
+            }
+
+            if (markPromise) {
+                return markPromise;
+            }
+
+            updateBadge(0);
+
+            const payload = new URLSearchParams();
+            payload.append('mark_all', '1');
+            payload.append('ajax', '1');
+
+            if (options.useBeacon === true && navigator.sendBeacon) {
+                const beaconBody = new Blob([payload.toString()], {
+                    type: 'application/x-www-form-urlencoded'
+                });
+                navigator.sendBeacon('notifications.php', beaconBody);
+                return Promise.resolve();
+            }
+
+            markPromise = fetch('notifications.php', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: payload.toString()
+            })
+                .then((response) => (response.ok ? response.json() : null))
+                .then((data) => {
+                    if (data && Object.prototype.hasOwnProperty.call(data, 'unreadCount')) {
+                        updateBadge(data.unreadCount);
+                    }
+                })
+                .catch(() => {
+                    // Ignore; manual controls remain available.
+                })
+                .finally(() => {
+                    markPromise = null;
+                });
+
+            return markPromise;
+        };
+
+        if (linkEl) {
+            linkEl.addEventListener('click', () => {
+                markCustomerNotificationsRead({ useBeacon: true });
+            });
+        }
+
+        const pageName = bodyEl.dataset.pageName || '';
+        if (autoClearPages.includes(pageName)) {
+            markCustomerNotificationsRead({ force: true });
+        }
+    }
+
+    initCustomerNotificationSync();
+
     console.log('RaymundoAvenue Flower Shop initialized successfully!');
 });
 
@@ -249,4 +346,28 @@ function debounce(func, wait) {
         clearTimeout(timeout);
         timeout = setTimeout(later, wait);
     };
+}
+
+if ('serviceWorker' in navigator) {
+    const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    window.addEventListener('load', function () {
+        if (isLocalhost) {
+            navigator.serviceWorker.getRegistrations().then(function (registrations) {
+                registrations.forEach(function (reg) {
+                    reg.unregister();
+                });
+            });
+            if ('caches' in window) {
+                caches.keys().then(function (keys) {
+                    keys.forEach(function (key) {
+                        caches.delete(key);
+                    });
+                });
+            }
+            return;
+        }
+        navigator.serviceWorker.register('service-worker.js').catch(function (error) {
+            console.error('Service worker registration failed:', error);
+        });
+    });
 }

@@ -177,7 +177,8 @@
         const withLinks = safe.replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, function (_, label, url) {
             return '<a href="' + url + '" target="_blank" rel="noopener">' + label + '</a>';
         });
-        return withLinks.replace(/\n/g, '<br>');
+        const withBold = withLinks.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+        return withBold.replace(/\n/g, '<br>');
     }
 
     function escapeHtml(str) {

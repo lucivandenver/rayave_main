@@ -8,13 +8,20 @@ if (function_exists('autoCancelPendingOrders')) {
     autoCancelPendingOrders(AUTO_CANCEL_PENDING_MIN_HOURS, AUTO_CANCEL_PENDING_MAX_HOURS);
 }
 
+if (function_exists('runDailyBirthdayNotifications')) {
+    runDailyBirthdayNotifications();
+}
+
 $adminUnreadNotifications = 0;
 if (isset($_SESSION['user_id']) && isAdmin()) {
     $adminUnreadNotifications = getUnreadNotificationCount($_SESSION['user_id']);
 }
+
+$currentAdminPage = basename($_SERVER['PHP_SELF'] ?? 'dashboard.php');
+$allowOutOfStockOrders = isOutOfStockOrderingEnabled();
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<html lang="<?php echo htmlspecialchars(getCurrentLanguage()); ?>">
 
 <head>
     <meta charset="UTF-8">
@@ -125,6 +132,67 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
 
         .admin-navbar .navbar-toggler:focus {
             box-shadow: none;
+        }
+
+        .language-switch {
+            display: inline-flex;
+            align-items: center;
+        }
+
+        .language-switch .dropdown-toggle {
+            min-height: 34px;
+            padding: 0.3rem 0.85rem;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.08);
+            color: #fff;
+            font-size: 0.88rem;
+            line-height: 1;
+            box-shadow: none;
+        }
+
+        .language-switch .dropdown-toggle:hover,
+        .language-switch .dropdown-toggle:focus {
+            background: rgba(255, 255, 255, 0.16);
+            color: #fff;
+        }
+
+        .language-switch .dropdown-menu {
+            min-width: 12rem;
+            max-width: min(92vw, 16rem);
+            max-height: min(70vh, 28rem);
+            border-radius: 0.9rem;
+            padding: 0.35rem;
+            box-shadow: 0 16px 35px rgba(15, 23, 42, 0.18);
+            overflow-y: auto;
+        }
+
+        .language-switch .dropdown-item {
+            border-radius: 0.65rem;
+            padding: 0.55rem 0.75rem;
+        }
+
+        .language-search {
+            position: sticky;
+            top: 0;
+            z-index: 2;
+            padding: 0.25rem 0.25rem 0.4rem;
+            background: #fff;
+        }
+
+        .language-search input {
+            width: 100%;
+            min-height: 36px;
+            border-radius: 0.75rem;
+            border: 1px solid #d1d5db;
+            padding: 0.45rem 0.75rem;
+            font-size: 0.95rem;
+        }
+
+        .language-switch .dropdown-item.active,
+        .language-switch .dropdown-item:active {
+            background: #198754;
+            color: #fff;
         }
 
         .sidebar {
@@ -257,6 +325,40 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
             main {
                 margin-top: 1rem;
             }
+
+            .admin-navbar .navbar-collapse {
+                margin-top: 0.75rem;
+                padding: 0.75rem;
+                background: rgba(255, 255, 255, 0.06);
+                border-radius: 1rem;
+            }
+
+            .admin-navbar .navbar-nav {
+                gap: 0.35rem;
+                width: 100%;
+            }
+
+            .admin-navbar .nav-link,
+            .admin-navbar .btn,
+            .admin-navbar .nav-pill {
+                width: 100%;
+                justify-content: flex-start;
+            }
+        }
+
+        @media (max-width: 575.98px) {
+            .admin-navbar .site-logo {
+                height: 40px;
+                width: 40px;
+            }
+
+            .brand-stack small {
+                letter-spacing: 0.18rem;
+            }
+
+            .sidebar {
+                width: min(88vw, 290px);
+            }
         }
     </style>
 </head>
@@ -265,13 +367,39 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark admin-navbar sticky-top shadow-sm">
         <div class="container-fluid">
-            <a class="navbar-brand d-flex align-items-center gap-3" href="dashboard.php">
-                <img src="../assets/images/products/FB_IMG_1762963948008_transparent.png" alt="Admin Logo" class="site-logo">
-                <div class="brand-stack">
-                    <span class="text-white">RayAve Admin</span>
-                    <small>Operations</small>
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <a class="navbar-brand d-flex align-items-center gap-3 mb-0" href="dashboard.php">
+                    <img src="../assets/images/products/FB_IMG_1762963948008_transparent.png" alt="Admin Logo" class="site-logo">
+                    <div class="brand-stack">
+                        <span class="text-white">RayAve Admin</span>
+                        <small>Operations</small>
+                    </div>
+                </a>
+
+                <div class="dropdown language-switch">
+                    <button class="dropdown-toggle" type="button" id="adminLanguageSwitchDropdown" data-bs-toggle="dropdown"
+                        aria-expanded="false" aria-label="<?php echo htmlspecialchars(t('Language')); ?>">
+                        <span class="d-none d-sm-inline"><?php echo htmlspecialchars(currentLanguageLabel()); ?></span>
+                        <span class="d-sm-none"><?php echo htmlspecialchars(strtoupper(getCurrentLanguage())); ?></span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="adminLanguageSwitchDropdown">
+                        <li class="language-search">
+                            <input type="search" class="form-control language-search-input" placeholder="<?php echo htmlspecialchars(t('Search language')); ?>" autocomplete="off">
+                        </li>
+                        <?php foreach (getAvailableLanguages() as $code => $language): ?>
+                            <li>
+                                <form method="POST" action="../set-language.php" class="mb-0">
+                                    <input type="hidden" name="language" value="<?php echo htmlspecialchars($code); ?>">
+                                    <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($_SERVER['REQUEST_URI'] ?? 'dashboard.php'); ?>">
+                                    <button type="submit" class="dropdown-item language-option <?php echo getCurrentLanguage() === $code ? 'active' : ''; ?>" data-language-name="<?php echo htmlspecialchars(strtolower($language['native'])); ?>">
+                                        <?php echo htmlspecialchars($language['native']); ?>
+                                    </button>
+                                </form>
+                            </li>
+                        <?php endforeach; ?>
+                    </ul>
                 </div>
-            </a>
+            </div>
             <div class="d-flex align-items-center gap-2">
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminTopNav"
                     aria-controls="adminTopNav" aria-expanded="false" aria-label="Toggle navigation">
@@ -293,6 +421,25 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
                             <?php echo (int) $adminUnreadNotifications; ?>
                         </span>
                     </button>
+                    <form method="POST" action="toggle-ordering-mode.php" class="nav-link nav-pill text-white-50 p-2"
+                        style="border: 1px solid rgba(255,255,255,0.25); border-radius: 999px;"
+                        data-ordering-override-form>
+                        <input type="hidden" name="allow_out_of_stock" value="<?php echo $allowOutOfStockOrders ? '1' : '0'; ?>">
+                        <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($currentAdminPage); ?>">
+                        <div class="form-check form-switch text-white mb-0 small">
+                            <input class="form-check-input" type="checkbox" role="switch"
+                                id="allowOutOfStockSwitch"
+                                <?php echo !$allowOutOfStockOrders ? 'checked' : ''; ?>
+                                data-ordering-override-toggle>
+                            <label class="form-check-label" for="allowOutOfStockSwitch">
+                                <span class="d-none d-lg-inline"><?php echo $allowOutOfStockOrders ? 'Allow orders w/o stock' : 'Disallow Orders w/o stock'; ?></span>
+                                <span class="d-lg-none"><?php echo $allowOutOfStockOrders ? 'Allow OOS' : 'Disallow OOS'; ?></span>
+                            </label>
+                        </div>
+                        <div class="small fw-semibold mt-1 <?php echo $allowOutOfStockOrders ? 'text-success' : 'text-warning'; ?>">
+                            <?php echo $allowOutOfStockOrders ? 'Maintenance OFF' : 'Maintenance ON'; ?>
+                        </div>
+                    </form>
                     <a class="nav-link" href="../index.php">
                         <i class="fas fa-external-link-alt"></i>
                         <span class="d-none d-lg-inline">View Shop</span>
@@ -317,7 +464,7 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
             <div class="modal-content">
                 <div class="modal-header">
                     <div>
-                        <h5 class="modal-title" id="adminNotificationsLabel">Notifications Center</h5>
+                        <h5 class="modal-title" id="adminNotificationsLabel"><?php echo htmlspecialchars(t('Notifications Center')); ?></h5>
                         <small class="text-muted">Alerts for customer messages, orders, and system updates.</small>
                     </div>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -327,27 +474,62 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
                         style="display: none;">
                         <form method="POST" action="notifications.php" class="mb-0" data-notification-form>
                             <input type="hidden" name="mark_all" value="1">
-                            <button type="submit" class="btn btn-outline-secondary btn-sm">Mark all as read</button>
+                            <button type="submit" class="btn btn-outline-secondary btn-sm"><?php echo htmlspecialchars(t('Mark all as read')); ?></button>
                         </form>
                         <form method="POST" action="notifications.php" class="mb-0" data-notification-form>
                             <input type="hidden" name="delete_all" value="1">
-                            <button type="submit" class="btn btn-outline-danger btn-sm">Delete all</button>
+                            <button type="submit" class="btn btn-outline-danger btn-sm"><?php echo htmlspecialchars(t('Delete all')); ?></button>
                         </form>
                     </div>
                     <div id="notificationsList">
                         <div class="text-center py-5 text-muted" id="notificationsLoading">
                             <div class="spinner-border text-success mb-3" role="status"></div>
-                            <p class="mb-0">Loading notifications...</p>
+                            <p class="mb-0"><?php echo htmlspecialchars(t('Loading notifications...')); ?></p>
                         </div>
                     </div>
                 </div>
             </div>
+
+    <script>
+        (function () {
+            const searchInput = document.querySelector('.language-search-input');
+            if (!searchInput) {
+                return;
+            }
+
+            const options = Array.from(document.querySelectorAll('.language-option'));
+            searchInput.addEventListener('input', function () {
+                const term = this.value.trim().toLowerCase();
+                options.forEach((option) => {
+                    const name = (option.dataset.languageName || option.textContent || '').toLowerCase();
+                    option.closest('li').style.display = !term || name.includes(term) ? '' : 'none';
+                });
+            });
+        })();
+    </script>
         </div>
     </div>
 
     <script>
         (function () {
             const modalEl = document.getElementById('adminNotificationsModal');
+
+            const orderingToggle = document.querySelector('[data-ordering-override-toggle]');
+            if (orderingToggle) {
+                orderingToggle.addEventListener('change', function () {
+                    const form = orderingToggle.closest('[data-ordering-override-form]');
+                    if (!form) {
+                        return;
+                    }
+                    const hiddenField = form.querySelector('input[name="allow_out_of_stock"]');
+                    if (hiddenField) {
+                        // Inverted logic: checked = DISALLOW (0), unchecked = ALLOW (1)
+                        hiddenField.value = orderingToggle.checked ? '0' : '1';
+                    }
+                    form.submit();
+                });
+            }
+
             if (!modalEl) {
                 return;
             }
@@ -356,6 +538,15 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
             const markAllWrapper = document.getElementById('notificationsMarkAllWrapper');
             const badgeEl = document.querySelector('[data-admin-unread-count]');
             let notificationsLoaded = false;
+            let markOnViewPromise = null;
+            const queueAlert = function (payload) {
+                window.__queuedAlerts = window.__queuedAlerts || [];
+                if (window.showGlobalAlert) {
+                    window.showGlobalAlert(payload);
+                } else {
+                    window.__queuedAlerts.push(payload);
+                }
+            };
 
             function updateBadge(count) {
                 if (!badgeEl) {
@@ -439,20 +630,33 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
                             updateBadge(data.unreadCount ?? 0);
                             loadNotifications(true);
                         } else if (data.message) {
-                            alert(data.message);
+                            queueAlert({
+                                type: 'danger',
+                                title: 'Notification Update Failed',
+                                message: data.message
+                            });
                         }
                     })
                     .catch(() => {
-                        alert('Unable to update notification right now.');
+                        queueAlert({
+                            type: 'danger',
+                            title: 'Notification Update Failed',
+                            message: 'Unable to update notification right now.'
+                        });
                     });
             }
 
             function loadNotifications(forceReload = false) {
-                if (notificationsLoaded && !forceReload) {
-                    return;
+                if (!forceReload && notificationsLoaded) {
+                    return Promise.resolve();
                 }
+
+                if (forceReload) {
+                    notificationsLoaded = false;
+                }
+
                 showLoading();
-                fetch('notifications.php?modal=1', {
+                return fetch('notifications.php?modal=1', {
                     headers: { 'X-Requested-With': 'XMLHttpRequest' }
                 })
                     .then((response) => response.json())
@@ -466,13 +670,50 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
                         bindNotificationRows();
                         notificationsLoaded = true;
                     })
-                    .catch(() => {
+                    .catch((error) => {
                         listEl.innerHTML = '<div class="text-center text-danger py-5">Failed to load notifications.</div>';
+                        throw error;
                     });
             }
 
+            function markNotificationsViewed() {
+                const unreadCount = badgeEl ? parseInt(badgeEl.textContent, 10) || 0 : 0;
+                if (unreadCount === 0 || markOnViewPromise) {
+                    return Promise.resolve();
+                }
+
+                const formData = new FormData();
+                formData.append('mark_all', '1');
+                formData.append('ajax', '1');
+
+                markOnViewPromise = fetch('notifications.php', {
+                    method: 'POST',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                    body: formData
+                })
+                    .then((response) => response.json())
+                    .then((data) => {
+                        updateBadge(data.unreadCount ?? 0);
+                        if ((data.unreadCount ?? 0) === 0) {
+                            return loadNotifications(true);
+                        }
+                        return null;
+                    })
+                    .catch(() => {
+                        // no-op; admin can still use manual mark buttons
+                    })
+                    .finally(() => {
+                        markOnViewPromise = null;
+                    });
+
+                return markOnViewPromise;
+            }
+
             modalEl.addEventListener('shown.bs.modal', function () {
-                loadNotifications();
+                loadNotifications()
+                    .finally(() => {
+                        markNotificationsViewed();
+                    });
             });
 
             modalEl.addEventListener('hidden.bs.modal', function () {
@@ -530,6 +771,13 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
                             </a>
                         </li>
                         <li class="nav-item">
+                            <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'broadcast.php' ? 'active' : ''; ?>"
+                                href="broadcast.php">
+                                <span class="nav-icon"><i class="fas fa-bullhorn"></i></span>
+                                <span>Announcements</span>
+                            </a>
+                        </li>
+                        <li class="nav-item">
                             <a class="nav-link <?php echo in_array(basename($_SERVER['PHP_SELF']), ['contact-messages.php', 'contact-message-view.php']) ? 'active' : ''; ?>"
                                 href="contact-messages.php">
                                 <span class="nav-icon"><i class="fas fa-headset"></i></span>
@@ -550,6 +798,13 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
                                 <span>Reports</span>
                             </a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link <?php echo basename($_SERVER['PHP_SELF']) == 'security.php' ? 'active' : ''; ?>"
+                                href="security.php">
+                                <span class="nav-icon"><i class="fas fa-shield-alt"></i></span>
+                                <span>Security</span>
+                            </a>
+                        </li>
                     </ul>
                 </div>
             </nav>
@@ -558,17 +813,15 @@ if (isset($_SESSION['user_id']) && isAdmin()) {
             <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4">
                 <!-- Alerts -->
                 <?php if (isset($_SESSION['success'])): ?>
-                    <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
-                        <?php echo $_SESSION['success']; ?>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <div class="alert alert-success d-none" data-modal-alert data-alert-title="Success">
+                        <?php echo htmlspecialchars($_SESSION['success']); ?>
                     </div>
                     <?php unset($_SESSION['success']); ?>
                 <?php endif; ?>
 
                 <?php if (isset($_SESSION['error'])): ?>
-                    <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
-                        <?php echo $_SESSION['error']; ?>
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    <div class="alert alert-danger d-none" data-modal-alert data-alert-title="Action Needed">
+                        <?php echo htmlspecialchars($_SESSION['error']); ?>
                     </div>
                     <?php unset($_SESSION['error']); ?>
                 <?php endif; ?>

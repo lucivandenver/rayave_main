@@ -17,6 +17,9 @@ function buildNotificationDestination(array $notification): array
         } elseif ($notification['type'] === 'support') {
             $link = 'contact-message-view.php?id=' . (int) $notification['related_id'];
             $label = 'Open conversation';
+        } elseif ($notification['type'] === 'birthday') {
+            $link = 'customer-detail.php?id=' . (int) $notification['related_id'];
+            $label = 'View customer';
         }
     }
 
@@ -65,7 +68,10 @@ function renderNotificationsHtml(array $notifications, bool $attachDataAttr = fa
                             <?php else: ?>
                                 <span class="badge bg-secondary align-self-center">Read</span>
                             <?php endif; ?>
-                            <form method="POST" class="mb-0"<?php echo $formAttr; ?>>
+                            <form method="POST" class="mb-0"<?php echo $formAttr; ?>
+                                  data-confirm="Delete this notification?"
+                                  data-confirm-variant="danger"
+                                  data-confirm-accept="Delete">
                                 <input type="hidden" name="delete_notification_id" value="<?php echo $notification['id']; ?>">
                                 <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
                             </form>
@@ -149,7 +155,10 @@ include 'includes/header.php';
                         Mark all as read
                     </button>
                 </form>
-                <form method="POST" class="mb-0" onsubmit="return confirm('Delete all notifications?');">
+                    <form method="POST" class="mb-0"
+                        data-confirm="Delete all notifications?"
+                        data-confirm-variant="danger"
+                        data-confirm-accept="Delete All">
                     <button type="submit" name="delete_all" class="btn btn-outline-danger btn-sm">
                         Delete all
                     </button>

@@ -1,0 +1,75 @@
+services:
+  db:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: flowershop
+      MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+      MYSQL_ROOT_PASSWORD: ""
+      TZ: Asia/Manila
+    ports:
+      - "3307:3306"
+    volumes:
+      - flowershop_db_data:/var/lib/mysql
+      - ./database/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u", "root"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      DOCKER_ENV: "true"
+      DOCKER_DB_HOST: db
+      DOCKER_DB_PORT: "3306"
+      DOCKER_DB_USER: root
+      DOCKER_DB_PASS: ""
+      DOCKER_DB_NAME: flowershop
+      APP_TIMEZONE: Asia/Manila
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      db:
+        condition: service_healthy
+    post_start:
+      - command:
+          - sh
+          - -c
+          - |
+            MSG="
+            ============================================================
+              Raymundo Avenue Flower Shop is running!
+              Shop URL:         http://localhost:8080
+              Customize Studio: http://localhost:8080/products.php?category=17
+              Admin Panel:      http://localhost:8080/admin/
+              phpMyAdmin:       http://localhost:8081
+            ============================================================
+            "
+            printf '%s\n' "$$MSG"
+            printf '%s\n' "$$MSG" > /proc/1/fd/1 2>/dev/null || true
+
+  phpmyadmin:
+    image: phpmyadmin:latest
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: root
+      PMA_PASSWORD: ""
+      UPLOAD_LIMIT: 64M
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  flowershop_db_data:

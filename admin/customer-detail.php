@@ -53,8 +53,8 @@ $customer_addresses = $addresses->fetchAll(PDO::FETCH_ASSOC);
                             style="width: 80px; height: 80px;">
                             <i class="fas fa-user fa-2x text-white"></i>
                         </div>
-                        <h4 class="mt-3"><?php echo $customer['full_name'] ?: $customer['username']; ?></h4>
-                        <p class="text-muted">@<?php echo $customer['username']; ?></p>
+                        <h4 class="mt-3"><?php echo htmlspecialchars($customer['full_name'] ?: $customer['email']); ?></h4>
+                        <p class="text-muted"><?php echo htmlspecialchars($customer['email']); ?></p>
                     </div>
 
                     <div class="customer-info">
@@ -67,6 +67,13 @@ $customer_addresses = $addresses->fetchAll(PDO::FETCH_ASSOC);
                             <div class="mb-3">
                                 <strong>Phone:</strong><br>
                                 <a href="tel:<?php echo $customer['phone']; ?>"><?php echo $customer['phone']; ?></a>
+                            </div>
+                        <?php endif; ?>
+
+                        <?php if (!empty($customer['birthday'])): ?>
+                            <div class="mb-3">
+                                <strong>Birthday:</strong><br>
+                                <?php echo date('F j', strtotime($customer['birthday'])); ?>
                             </div>
                         <?php endif; ?>
 

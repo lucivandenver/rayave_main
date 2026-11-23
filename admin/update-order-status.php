@@ -7,29 +7,17 @@ if (!isLoggedIn() || !isAdmin()) {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $order_id = $_POST['order_id'];
-    $status = $_POST['status'];
-    $tracking_number = $_POST['tracking_number'] ?? '';
-    $description = $_POST['description'] ?? '';
+    $order_id = isset($_POST['order_id']) ? (int) $_POST['order_id'] : 0;
+    $status = $_POST['status'] ?? '';
+    $tracking_number = trim($_POST['tracking_number'] ?? '');
+    $description = trim($_POST['description'] ?? '');
 
-    // Update order status
-    $stmt = $pdo->prepare("UPDATE orders SET status = ?, tracking_number = ? WHERE id = ?");
-    if ($stmt->execute([$status, $tracking_number, $order_id])) {
-        // Add tracking entry
-        if (empty($description)) {
-            $descriptions = [
-                'pending' => 'Order placed successfully',
-                'confirmed' => 'Order confirmed and payment verified',
-                'processing' => 'Order is being processed and prepared for shipment',
-                'shipped' => 'Order has been shipped with tracking: ' . $tracking_number,
-                'delivered' => 'Order has been delivered successfully',
-                'cancelled' => 'Order has been cancelled'
-            ];
-            $description = $descriptions[$status] ?? 'Order status updated';
-        }
+    if ($description === '') {
+        $descriptions = getOrderStatusDescriptions($tracking_number);
+        $description = $descriptions[$status] ?? 'Order status updated';
+    }
 
-        updateOrderStatus($order_id, $status, $description);
-
+    if (updateOrderStatus($order_id, $status, $description, true, $tracking_number)) {
         $_SESSION['success'] = "Order #$order_id status updated to " . ucfirst($status) . "!";
     } else {
         $_SESSION['error'] = "Failed to update order status.";

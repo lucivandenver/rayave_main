@@ -10,7 +10,7 @@ if (!isLoggedIn() || !isAdmin()) {
     redirect('../login.php');
 }
 
-$validTypes = ['sales', 'products', 'customers', 'cancellations'];
+$validTypes = ['sales', 'products', 'perpiece', 'customers', 'cancellations'];
 $format = strtolower($_GET['format'] ?? 'excel');
 $type = $_GET['type'] ?? 'sales';
 $period = $_GET['period'] ?? 'monthly';
@@ -31,6 +31,10 @@ switch ($type) {
     case 'products':
         $data = getProductPerformanceReport($range['start'], $range['end']);
         $reportTitle = 'Product Performance Report';
+        break;
+    case 'perpiece':
+        $data = getPerPieceProductsReport($range['start'], $range['end']);
+        $reportTitle = 'Per-Piece Products Report';
         break;
     case 'customers':
         $data = getCustomerInsightsReport($range['start'], $range['end']);
@@ -89,6 +93,36 @@ if ($format !== 'pdf') {
                 (int) $item['order_count'],
                 (float) $item['revenue']
             ], null, 'A' . $row);
+            $row++;
+        }
+    } elseif ($type === 'perpiece') {
+        $sheet->fromArray(['Summary Metric', 'Value'], null, 'A' . $row);
+        $row++;
+        $sheet->fromArray(['Per-Piece Items', $data['summary']['total_items']], null, 'A' . $row++);
+        $sheet->fromArray(['Product Categories', $data['summary']['total_categories']], null, 'A' . $row++);
+        $sheet->fromArray(['Units Consumed', $data['summary']['total_units_consumed']], null, 'A' . $row++);
+        $sheet->fromArray(['Linked Products', $data['summary']['total_linked_products']], null, 'A' . $row++);
+        $sheet->fromArray(['Revenue', $data['summary']['total_revenue']], null, 'A' . $row++);
+        $row++;
+
+        foreach ($data['categories'] as $categoryGroup) {
+            $sheet->setCellValue('A' . $row, $categoryGroup['category_name']);
+            $sheet->mergeCells('A' . $row . ':G' . $row);
+            $row++;
+            $sheet->fromArray(['Per-Piece Item', 'Linked Products', 'Products', 'Units Consumed', 'Orders', 'Revenue', 'Last Used'], null, 'A' . $row);
+            $row++;
+            foreach ($categoryGroup['items'] as $item) {
+                $sheet->fromArray([
+                    $item['name'],
+                    $item['linked_products'] ?? '',
+                    (int) $item['linked_product_count'],
+                    (float) $item['units_consumed'],
+                    (int) $item['order_count'],
+                    (float) $item['revenue'],
+                    !empty($item['last_used_at']) ? date('M j, Y', strtotime($item['last_used_at'])) : ''
+                ], null, 'A' . $row);
+                $row++;
+            }
             $row++;
         }
     } elseif ($type === 'customers') {
@@ -261,6 +295,79 @@ ob_start();
                 <?php endif; ?>
             </tbody>
         </table>
+    <?php elseif ($type === 'perpiece'): ?>
+        <table>
+            <thead>
+                <tr>
+                    <th>Summary Metric</th>
+                    <th>Value</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>Per-Piece Items</td>
+                    <td><?php echo number_format($data['summary']['total_items']); ?></td>
+                </tr>
+                <tr>
+                    <td>Product Categories</td>
+                    <td><?php echo number_format($data['summary']['total_categories']); ?></td>
+                </tr>
+                <tr>
+                    <td>Units Consumed</td>
+                    <td><?php echo number_format((float) $data['summary']['total_units_consumed'], 2); ?></td>
+                </tr>
+                <tr>
+                    <td>Linked Products</td>
+                    <td><?php echo number_format($data['summary']['total_linked_products']); ?></td>
+                </tr>
+                <tr>
+                    <td>Revenue</td>
+                    <td><?php echo $peso($data['summary']['total_revenue']); ?></td>
+                </tr>
+            </tbody>
+        </table>
+
+        <?php if (empty($data['categories'])): ?>
+            <table>
+                <tbody>
+                    <tr>
+                        <td>No per-piece usage recorded.</td>
+                    </tr>
+                </tbody>
+            </table>
+        <?php else: ?>
+            <?php foreach ($data['categories'] as $categoryGroup): ?>
+                <table>
+                    <thead>
+                        <tr>
+                            <th colspan="7"><?php echo htmlspecialchars($categoryGroup['category_name']); ?></th>
+                        </tr>
+                        <tr>
+                            <th>Per-Piece Item</th>
+                            <th>Linked Products</th>
+                            <th>Products</th>
+                            <th>Units Consumed</th>
+                            <th>Orders</th>
+                            <th>Revenue</th>
+                            <th>Last Used</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php foreach ($categoryGroup['items'] as $row): ?>
+                            <tr>
+                                <td><?php echo htmlspecialchars($row['name']); ?></td>
+                                <td><?php echo htmlspecialchars($row['linked_products'] ?? ''); ?></td>
+                                <td><?php echo (int) $row['linked_product_count']; ?></td>
+                                <td><?php echo number_format((float) $row['units_consumed'], 2); ?></td>
+                                <td><?php echo (int) $row['order_count']; ?></td>
+                                <td><?php echo $peso($row['revenue']); ?></td>
+                                <td><?php echo !empty($row['last_used_at']) ? date('M j, Y', strtotime($row['last_used_at'])) : '-'; ?></td>
+                            </tr>
+                        <?php endforeach; ?>
+                    </tbody>
+                </table>
+            <?php endforeach; ?>
+        <?php endif; ?>
     <?php elseif ($type === 'customers'): ?>
         <table>
             <thead>

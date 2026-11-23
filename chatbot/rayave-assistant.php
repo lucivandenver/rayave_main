@@ -18,6 +18,32 @@ if ($message === '') {
     respondError(400, 'Message is required');
 }
 
+// Scan for inappropriate content and flag
+require_once __DIR__ . '/../includes/functions.php';
+$userId = $_SESSION['user_id'] ?? null;
+$detected = [];
+if (function_exists('scanForInappropriateWords') && function_exists('flagMessage')) {
+    $detected = scanForInappropriateWords($message);
+    if (!empty($detected)) {
+        $source = 'chatbot';
+        flagMessage($userId, $source, $message, $detected);
+        if (function_exists('logUserActivity')) {
+            logUserActivity($userId, 'flagged_message', [
+                'source' => $source,
+                'detected_words' => implode(', ', $detected),
+                'message_preview' => mb_substr($message, 0, 160),
+            ]);
+        }
+    }
+}
+if (function_exists('logUserActivity')) {
+    logUserActivity($userId, 'chatbot_message', [
+        'source' => 'chatbot',
+        'message_preview' => mb_substr($message, 0, 160),
+        'flagged' => !empty($detected) ? 1 : 0,
+    ]);
+}
+
 if (shouldSendMapLink($message)) {
     $mapReply = buildMapReply();
     logChatbotEvent('Map link intent served', [
@@ -67,52 +93,80 @@ Guidelines:
 - Only mention social media links if the user specifically asks for them; otherwise focus on answering with in-stock bouquets or services.
 - Remind users they can browse the site category pages (Products → choose category) if they want to see the full gallery after suggesting items.
 - Keep responses under 140 words unless more detail is required.
+- Use simple bullet points (- ) when listing items; never use Markdown tables since replies are shown inside a compact chat bubble.
 - If customer asks about contact details, hours, or social media, reply with the exact info from the context and include full URLs for links.
 - When sharing social profiles, format them as Markdown links so they are easy to tap.
 PROMPT;
 
-$requestBody = [
-    'model' => GROQ_MODEL,
-    'messages' => [
-        ['role' => 'system', 'content' => $systemPrompt],
-        ['role' => 'user', 'content' => $message]
-    ],
-    'temperature' => 0.35,
-    'max_tokens' => 600
-];
-
-$ch = curl_init(rtrim(GROQ_API_BASE, '/') . '/chat/completions');
+$fallbackModels = array_values(array_unique(array_filter([
+    GROQ_MODEL,
+    'openai/gpt-oss-120b',
+    'openai/gpt-oss-20b',
+    'qwen/qwen3.8-27b',
+])));
 
 $caBundle = resolveCaBundlePath();
-if ($caBundle) {
-    curl_setopt($ch, CURLOPT_CAINFO, $caBundle);
+$response = false;
+$httpCode = 0;
+$data = null;
+$curlError = '';
+
+foreach ($fallbackModels as $candidateModel) {
+    $requestBody = [
+        'model' => $candidateModel,
+        'messages' => [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $message]
+        ],
+        'temperature' => 0.35,
+        'max_tokens' => 1024
+    ];
+
+    $ch = curl_init(rtrim(GROQ_API_BASE, '/') . '/chat/completions');
+
+    if ($caBundle) {
+        curl_setopt($ch, CURLOPT_CAINFO, $caBundle);
+    }
+
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_POST => true,
+        CURLOPT_HTTPHEADER => [
+            'Content-Type: application/json',
+            'Authorization: Bearer ' . GROQ_API_KEY,
+        ],
+        CURLOPT_POSTFIELDS => json_encode($requestBody),
+        CURLOPT_TIMEOUT => 30,
+    ]);
+
+    $response = curl_exec($ch);
+
+    if ($response === false) {
+        $curlError = curl_error($ch);
+        curl_close($ch);
+        break;
+    }
+
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    $data = json_decode($response, true);
+    $errorCode = $data['error']['code'] ?? '';
+
+    if ($httpCode < 400 && isset($data['choices'][0]['message']['content'])) {
+        break;
+    }
+
+    if (!in_array($errorCode, ['model_not_found', 'model_decommissioned'], true) && $httpCode !== 404) {
+        break;
+    }
 }
 
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST => true,
-    CURLOPT_HTTPHEADER => [
-        'Content-Type: application/json',
-        'Authorization: Bearer ' . GROQ_API_KEY,
-    ],
-    CURLOPT_POSTFIELDS => json_encode($requestBody),
-    CURLOPT_TIMEOUT => 30,
-]);
-
-$response = curl_exec($ch);
-
 if ($response === false) {
-    $curlError = curl_error($ch);
-    curl_close($ch);
     respondError(500, 'Unable to reach Groq. Please try again shortly.', [
         'curl_error' => $curlError
     ]);
 }
-
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-$data = json_decode($response, true);
 
 if ($httpCode >= 400 || !isset($data['choices'][0]['message']['content'])) {
     respondError(500, $data['error']['message'] ?? 'Groq was unable to generate a reply.', [
@@ -188,7 +242,7 @@ function buildBusinessProfile(): string
 function buildProductShowcase(PDO $pdo): string
 {
     try {
-        $stmt = $pdo->query("SELECT p.name, p.price, p.stock_quantity, p.is_featured, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id ORDER BY p.is_featured DESC, p.updated_at DESC, p.created_at DESC LIMIT 6");
+        $stmt = $pdo->query("SELECT p.name, p.price, p.stock_quantity, p.is_featured, c.name AS category_name FROM products p LEFT JOIN categories c ON c.id = p.category_id ORDER BY p.is_featured DESC, p.created_at DESC LIMIT 6");
         $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('Product showcase query failed: ' . $e->getMessage());
@@ -221,7 +275,7 @@ function buildProductShowcase(PDO $pdo): string
 function buildBestSellerShowcase(PDO $pdo): string
 {
     try {
-        $stmt = $pdo->prepare("SELECT p.name, p.price, p.description FROM products p JOIN categories c ON c.id = p.category_id WHERE c.name = ? ORDER BY p.is_featured DESC, p.updated_at DESC, p.created_at DESC LIMIT 10");
+        $stmt = $pdo->prepare("SELECT p.name, p.price, p.description FROM products p JOIN categories c ON c.id = p.category_id WHERE c.name = ? ORDER BY p.is_featured DESC, p.created_at DESC LIMIT 10");
         $stmt->execute(['Best Sellers']);
         $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
@@ -317,7 +371,7 @@ function buildCategoryGlossary(PDO $pdo): string
     $maxItemsPerCategory = 5;
 
     try {
-        $stmt = $pdo->query("SELECT c.name AS category_name, p.name, p.description, p.price\n            FROM categories c\n            LEFT JOIN products p ON p.category_id = c.id\n            ORDER BY c.name ASC, p.is_featured DESC, p.updated_at DESC, p.created_at DESC");
+        $stmt = $pdo->query("SELECT c.name AS category_name, p.name, p.description, p.price\n            FROM categories c\n            LEFT JOIN products p ON p.category_id = c.id\n            ORDER BY c.name ASC, p.is_featured DESC, p.created_at DESC");
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('Category glossary query failed: ' . $e->getMessage());
@@ -388,7 +442,7 @@ function buildCategoryFocusSections(PDO $pdo): string
 
     try {
         $stmt = $pdo->prepare(
-            "SELECT c.name AS category_name, p.name, p.price, p.description\n             FROM categories c\n             JOIN products p ON p.category_id = c.id\n             WHERE c.name IN ($placeholders)\n             ORDER BY FIELD(c.name, $placeholders), p.is_featured DESC, p.updated_at DESC, p.created_at DESC"
+            "SELECT c.name AS category_name, p.name, p.price, p.description\n             FROM categories c\n             JOIN products p ON p.category_id = c.id\n             WHERE c.name IN ($placeholders)\n             ORDER BY FIELD(c.name, $placeholders), p.is_featured DESC, p.created_at DESC"
         );
         $stmt->execute(array_merge($focusCategories, $focusCategories));
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -458,7 +512,7 @@ function buildOccasionCheatSheet(PDO $pdo): string
     $limitPerLabel = 3;
 
     try {
-        $stmt = $pdo->query("SELECT name, description, price FROM products ORDER BY is_featured DESC, updated_at DESC, created_at DESC LIMIT 80");
+        $stmt = $pdo->query("SELECT name, description, price FROM products ORDER BY is_featured DESC, created_at DESC LIMIT 80");
         $products = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('Occasion cheat sheet query failed: ' . $e->getMessage());
@@ -513,7 +567,7 @@ function buildOccasionCheatSheet(PDO $pdo): string
 function buildCouponSnapshot(PDO $pdo): string
 {
     try {
-        $stmt = $pdo->query("SELECT code, discount_type, discount_value, description, min_order_amount FROM coupons WHERE is_active = 1 ORDER BY created_at DESC LIMIT 3");
+        $stmt = $pdo->query("SELECT code, discount_type, discount_value, min_order_amount FROM coupons WHERE is_active = 1 ORDER BY created_at DESC LIMIT 3");
         $coupons = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (Throwable $e) {
         error_log('Coupon snapshot error: ' . $e->getMessage());
@@ -530,11 +584,10 @@ function buildCouponSnapshot(PDO $pdo): string
             ? $coupon['discount_value'] . '%'
             : '₱' . number_format((float) $coupon['discount_value'], 2);
         $minOrder = !empty($coupon['min_order_amount']) ? 'Min order ₱' . number_format((float) $coupon['min_order_amount'], 2) : 'No minimum';
-        $lines[] = sprintf('%s: %s off. %s. %s',
+        $lines[] = sprintf('%s: %s off (%s)',
             strtoupper($coupon['code']),
             $value,
-            $minOrder,
-            sanitizeContextText($coupon['description'] ?? 'No description')
+            $minOrder
         );
     }
 
@@ -583,6 +636,7 @@ function resolveCaBundlePath(): ?string
     $candidates = [
         getenv('CURL_CA_BUNDLE'),
         ini_get('curl.cainfo'),
+        '/etc/ssl/certs/ca-certificates.crt',
         'C:/laragon/etc/ssl/cacert.pem',
         'C:\\laragon\\etc\\ssl\\cacert.pem',
         dirname(__DIR__) . '/storage/certs/cacert.pem'

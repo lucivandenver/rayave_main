@@ -246,6 +246,8 @@ body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
     line-height: 1.6;
     overflow-x: hidden;
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
 }
 
 html {
@@ -266,8 +268,45 @@ input[type="text"],
 input[type="email"],
 input[type="password"],
 input[type="number"],
+input[type="search"],
+input[type="tel"],
+input[type="date"],
+input[type="time"],
 textarea {
     min-height: 44px;
+}
+
+.btn,
+.form-control,
+.form-select {
+    max-width: 100%;
+}
+
+.container,
+.container-fluid {
+    padding-left: clamp(0.75rem, 2vw, 1.5rem);
+    padding-right: clamp(0.75rem, 2vw, 1.5rem);
+}
+
+.card,
+.modal-content,
+.alert,
+.table-responsive,
+.list-group-item,
+.dropdown-menu {
+    max-width: 100%;
+}
+
+.table-responsive {
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-responsive .table {
+    margin-bottom: 0;
+}
+
+table {
+    width: 100%;
 }
 
 .card + .card {
@@ -433,6 +472,59 @@ textarea {
     vertical-align: middle;
 }
 
+/* Admin Products Table Enhancements */
+.featured-col {
+    width: 80px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.featured-col .fa-star {
+    font-size: 0.95rem;
+}
+
+.link-inventory-btn {
+    border-color: #0d6efd;
+    color: #0d6efd;
+}
+
+.link-inventory-btn:hover,
+.link-inventory-btn:focus {
+    background-color: #0d6efd;
+    color: #ffffff;
+}
+
+.inventory-link-meta {
+    font-size: 0.8rem;
+    color: #6c757d;
+}
+
+.inventory-link-modal .component-row {
+    background-color: #f8f9fa;
+}
+
+.inventory-link-modal .component-row .form-label {
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.inventory-link-modal .component-row:not(:last-child) {
+    margin-bottom: 1rem;
+}
+
+.inventory-search .input-group-text {
+    background-color: #ffffff;
+}
+
+.inventory-search .btn {
+    min-height: 32px;
+}
+
+.inventory-search input[type="search"]::placeholder {
+    color: #94a3b8;
+}
+
 /* Rating Stars */
 .rating-stars {
     color: var(--warning-color);
@@ -546,7 +638,7 @@ footer .footer-link-group a:focus {
     color: #20c997 !important;
     text-decoration: none;
 }
-}
+
 
 /* Responsive Design */
 @media (max-width: 768px) {
@@ -563,9 +655,55 @@ footer .footer-link-group a:focus {
         transform: none;
     }
     
-    .btn, .btn-outline-success {
+    .form-actions .btn,
+    .stack-buttons .btn,
+    .card-body > .btn,
+    .card-footer .btn,
+    form .btn.btn-success,
+    form .btn.btn-primary,
+    form .btn.btn-outline-success,
+    form .btn.btn-outline-primary,
+    form .btn.btn-outline-danger {
         width: 100%;
         margin-bottom: 10px;
+    }
+
+    .btn-group .btn,
+    .btn-toolbar .btn,
+    .navbar .btn,
+    .navbar .nav-link,
+    .pagination .page-link,
+    .dropdown-menu .btn,
+    .input-group .btn,
+    .input-group .form-control,
+    .input-group .form-select,
+    .table-responsive .btn,
+    .modal .btn,
+    .list-group .btn {
+        width: auto;
+        margin-bottom: 0;
+    }
+
+    .navbar-nav {
+        gap: 0.35rem;
+    }
+
+    .card-body,
+    .card-header {
+        padding: 1rem;
+    }
+
+    .table {
+        display: block;
+        overflow-x: auto;
+        white-space: nowrap;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .table thead,
+    .table tbody,
+    .table tr {
+        width: 100%;
     }
     
     .table-responsive {
@@ -609,4 +747,72 @@ footer .footer-link-group a:focus {
 
 ::-webkit-scrollbar-thumb:hover {
     background: #157347;
+}
+
+@media (display-mode: standalone) {
+    body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+    }
+}
+
+@media (max-width: 576px) {
+    .hero-section {
+        padding: 70px 0;
+    }
+
+    .hero-section h1 {
+        font-size: 1.75rem;
+        line-height: 1.25;
+    }
+
+    .navbar-brand {
+        font-size: 1.15rem;
+    }
+
+    .container,
+    .container-fluid {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .row.g-4,
+    .row.g-3,
+    .row.g-2 {
+        --bs-gutter-x: 0.75rem;
+        --bs-gutter-y: 0.75rem;
+    }
+
+    .btn:not(.btn-link):not(.btn-sm):not(.page-link):not(.nav-link):not(.navbar-toggler) {
+        width: 100%;
+    }
+
+    .btn-group > .btn,
+    .input-group > .btn,
+    .input-group > .form-control,
+    .input-group > .form-select,
+    .pagination .page-link,
+    .navbar .btn,
+    .navbar .nav-link,
+    .sidebar .nav-link,
+    .admin-navbar .nav-link,
+    .admin-navbar .btn,
+    .sidebar .btn {
+        width: auto;
+    }
+
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+
+    .modal-body,
+    .modal-header,
+    .modal-footer {
+        padding: 0.75rem;
+    }
+
+    .card-header .d-flex,
+    .card-body .d-flex {
+        flex-wrap: wrap;
+    }
 }

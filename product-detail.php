@@ -16,10 +16,15 @@ if (!$product) {
 $reviews = getProductReviews($product_id);
 $rating_info = getAverageRating($product_id);
 
-$isOutOfStock = $product['stock_quantity'] <= 0;
+$stockCount = isset($product['stock_quantity']) ? (int) $product['stock_quantity'] : 0;
+$allowOutOfStockOrders = isOutOfStockOrderingEnabled();
+$isZeroStock = $stockCount <= 0;
+$isPreorderOnly = $allowOutOfStockOrders && $isZeroStock;
+$isOutOfStock = !$allowOutOfStockOrders && $isZeroStock;
 $isManuallyUnavailable = ($product['availability_status'] ?? 'available') !== 'available';
-$statusLabel = $isOutOfStock ? 'Out of Stock' : ($isManuallyUnavailable ? 'Unavailable' : 'In Stock');
-$statusClass = $isOutOfStock ? 'text-danger' : ($isManuallyUnavailable ? 'text-warning' : 'text-success');
+$statusLabel = $isPreorderOnly ? 'Preorder' : ($isOutOfStock ? 'Out of Stock' : ($isManuallyUnavailable ? 'Unavailable' : 'In Stock'));
+$statusClass = $isPreorderOnly ? 'text-warning' : ($isOutOfStock ? 'text-danger' : ($isManuallyUnavailable ? 'text-warning' : 'text-success'));
+$quantityMaxAttr = $allowOutOfStockOrders ? '' : 'max="' . max(1, $stockCount) . '"';
 
 // Safe related products with error handling
 try {
@@ -102,8 +107,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review'])) {
                 <span class="<?php echo $statusClass; ?>">
                     <?php echo $statusLabel; ?>
                 </span>
-                <?php if (!$isOutOfStock): ?>
-                    <small class="text-muted">&mdash; <?php echo $product['stock_quantity']; ?> pcs available</small>
+                <?php if ($isPreorderOnly): ?>
+                    <small class="text-warning">&mdash; Preorder while inventory is syncing</small>
+                <?php elseif (!$isOutOfStock): ?>
+                    <small class="text-muted">&mdash; <?php echo $stockCount; ?> pcs available</small>
                 <?php endif; ?>
             </div>
 
@@ -116,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review'])) {
                         </div>
                         <div class="col-auto">
                             <input type="number" name="quantity" id="quantity" class="form-control" value="1" min="1"
-                                max="<?php echo $product['stock_quantity']; ?>" style="width: 80px;">
+                                <?php echo $quantityMaxAttr; ?> style="width: 80px;">
                         </div>
                         <div class="col-auto">
                             <button type="submit" class="btn btn-success btn-lg">
@@ -124,6 +131,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review'])) {
                             </button>
                         </div>
                     </div>
+                    <?php if ($isPreorderOnly): ?>
+                        <small class="text-warning">Orders placed now are queued while fresh stock is prepared.</small>
+                    <?php endif; ?>
                 </form>
             <?php elseif (!isLoggedIn() && !$isOutOfStock && !$isManuallyUnavailable): ?>
                 <a href="login.php" class="btn btn-success btn-lg">Login to Purchase</a>
@@ -196,7 +206,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_review'])) {
                                 <div class="review-item border-bottom pb-3 mb-3">
                                     <div class="d-flex justify-content-between align-items-start">
                                         <div>
-                                            <h6 class="mb-1"><?php echo $review['full_name'] ?: $review['username']; ?></h6>
+                                            <h6 class="mb-1"><?php echo htmlspecialchars($review['full_name'] ?: 'Customer'); ?></h6>
                                             <div class="rating-stars mb-2">
                                                 <?php for ($i = 1; $i <= 5; $i++): ?>
                                                     <i

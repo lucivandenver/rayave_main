@@ -59,9 +59,10 @@ include 'includes/header.php';
                             <div class="list-group-item"> 
                                 <div class="row g-3 align-items-center">
                                     <div class="col-md">
-                                        <strong><?php echo htmlspecialchars($customer['full_name'] ?: $customer['username']); ?></strong>
-                                        <div class="text-muted small">@<?php echo htmlspecialchars($customer['username']); ?> ·
-                                            <?php echo htmlspecialchars($customer['email']); ?></div>
+                                        <strong><?php echo htmlspecialchars($customer['full_name'] ?: $customer['email']); ?></strong>
+                                        <div class="text-muted small">
+                                            <?php echo htmlspecialchars($customer['email']); ?>
+                                        </div>
                                         <?php if ($existingThread): ?>
                                             <span class="badge bg-secondary mt-2">Existing conversation</span>
                                         <?php else: ?>

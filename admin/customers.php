@@ -72,9 +72,9 @@ $customers = $customers_stmt->fetchAll(PDO::FETCH_ASSOC);
                                 <tr>
                                     <td><?php echo $customer['id']; ?></td>
                                     <td>
-                                        <div class="fw-bold"><?php echo $customer['full_name'] ?: $customer['username']; ?>
+                                        <div class="fw-bold"><?php echo htmlspecialchars($customer['full_name'] ?: $customer['email']); ?>
                                         </div>
-                                        <small class="text-muted">@<?php echo $customer['username']; ?></small>
+                                        <small class="text-muted"><?php echo htmlspecialchars($customer['email']); ?></small>
                                     </td>
                                     <td><?php echo $customer['email']; ?></td>
                                     <td><?php echo $customer['phone'] ?: 'N/A'; ?></td>

@@ -9,6 +9,55 @@ if (!isLoggedIn() || !isAdmin()) {
 $errors = [];
 $success = '';
 $editingCoupon = null;
+$rewardErrors = [];
+$rewardSuccess = '';
+$editingRewardTier = null;
+$shippingErrors = [];
+$shippingSuccess = '';
+
+ensureShippingSettingsTable();
+ensureRewardsSystem();
+
+$shippingSettings = getShippingSettings();
+$shippingLastUpdatedLabel = !empty($shippingSettings['updated_at'])
+    ? date('M d, Y g:i A', strtotime($shippingSettings['updated_at']))
+    : 'Not updated yet';
+$shippingUpdatedByLabel = '';
+if (!empty($shippingSettings['updated_by'])) {
+    $updatedByUser = getUserById((int) $shippingSettings['updated_by']);
+    if ($updatedByUser) {
+        $nameParts = [];
+        if (!empty($updatedByUser['first_name'])) {
+            $nameParts[] = $updatedByUser['first_name'];
+        }
+        if (!empty($updatedByUser['last_name'])) {
+            $nameParts[] = $updatedByUser['last_name'];
+        }
+        if (empty($nameParts) && !empty($updatedByUser['name'])) {
+            $nameParts[] = $updatedByUser['name'];
+        }
+        if (empty($nameParts) && !empty($updatedByUser['email'])) {
+            $nameParts[] = $updatedByUser['email'];
+        }
+        if (!empty($nameParts)) {
+            $shippingUpdatedByLabel = implode(' ', $nameParts);
+        } else {
+            $shippingUpdatedByLabel = 'User #' . (int) $updatedByUser['id'];
+        }
+    } else {
+        $shippingUpdatedByLabel = 'User #' . (int) $shippingSettings['updated_by'];
+    }
+}
+
+$shippingErrors = $_SESSION['shipping_errors'] ?? [];
+$shippingSuccess = $_SESSION['shipping_success'] ?? '';
+$shippingSettingsOverride = $_SESSION['shipping_settings_input'] ?? null;
+unset($_SESSION['shipping_errors'], $_SESSION['shipping_success'], $_SESSION['shipping_settings_input']);
+
+$shippingFormValues = $shippingSettings;
+if ($shippingSettingsOverride && is_array($shippingSettingsOverride)) {
+    $shippingFormValues = array_merge($shippingFormValues, $shippingSettingsOverride);
+}
 
 if (isset($_GET['edit'])) {
     $editingCoupon = getCouponById((int) $_GET['edit']);
@@ -28,6 +77,61 @@ if (isset($_GET['delete'])) {
         }
     }
     redirect('coupons.php');
+}
+
+if (isset($_GET['edit_reward'])) {
+    $editingRewardTier = getRewardTierById((int) $_GET['edit_reward']);
+    if (!$editingRewardTier) {
+        $_SESSION['error'] = 'Reward tier not found.';
+        redirect('coupons.php#reward-tiers');
+    }
+}
+
+if (isset($_GET['delete_reward'])) {
+    $tierId = (int) $_GET['delete_reward'];
+    if ($tierId > 0) {
+        if (deleteRewardTier($tierId)) {
+            $_SESSION['reward_success'] = 'Reward tier deleted successfully.';
+        } else {
+            $_SESSION['reward_errors'] = ['Failed to delete reward tier.'];
+        }
+    }
+    redirect('coupons.php#reward-tiers');
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_shipping_settings'])) {
+    $shippingInput = [
+        'zone_roxas_fee' => max(0, (float) ($_POST['zone_roxas_fee'] ?? 0)),
+        'zone_oriental_fee' => max(0, (float) ($_POST['zone_oriental_fee'] ?? 0)),
+        'zone_out_province_fee' => max(0, (float) ($_POST['zone_out_province_fee'] ?? 0)),
+        'google_maps_api_key' => trim((string) ($_POST['google_maps_api_key'] ?? ''))
+    ];
+
+    $shippingErrors = [];
+    if ($shippingInput['zone_roxas_fee'] < 0 || $shippingInput['zone_oriental_fee'] < 0 || $shippingInput['zone_out_province_fee'] < 0) {
+        $shippingErrors[] = 'Shipping fees cannot be negative.';
+    }
+
+    if (empty($shippingErrors) && $shippingInput['zone_roxas_fee'] === 0 && $shippingInput['zone_oriental_fee'] === 0 && $shippingInput['zone_out_province_fee'] === 0) {
+        $shippingErrors[] = 'Set at least one delivery zone fee above zero to enable deliveries.';
+    }
+
+    if (empty($shippingErrors)) {
+        if (updateShippingSettings($shippingInput, $_SESSION['user_id'] ?? null)) {
+            $_SESSION['shipping_success'] = 'Shipping fee settings updated.';
+        } else {
+            $shippingErrors[] = 'Failed to update shipping settings. Please try again.';
+        }
+    }
+
+    if (!empty($shippingErrors)) {
+        $_SESSION['shipping_errors'] = $shippingErrors;
+        $_SESSION['shipping_settings_input'] = $shippingInput;
+    } else {
+        unset($_SESSION['shipping_settings_input']);
+    }
+
+    redirect('coupons.php#shipping-settings');
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_coupon'])) {
@@ -98,13 +202,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_coupon'])) {
     ];
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_reward_tier'])) {
+    $rewardTierId = isset($_POST['reward_tier_id']) && $_POST['reward_tier_id'] !== '' ? (int) $_POST['reward_tier_id'] : null;
+    $requiredOrders = max(1, (int) ($_POST['required_orders'] ?? 0));
+    $discountPercent = max(0, min(100, (float) ($_POST['discount_percent'] ?? 0)));
+    $pointsCost = max(0, (int) ($_POST['points_cost'] ?? 0));
+    $isActiveReward = isset($_POST['reward_is_active']) ? 1 : 0;
+
+    if ($requiredOrders <= 0) {
+        $rewardErrors[] = 'Required orders must be at least 1.';
+    }
+
+    if ($discountPercent <= 0) {
+        $rewardErrors[] = 'Discount percent must be greater than zero.';
+    }
+
+    if (rewardTierMinOrdersExists($requiredOrders, $rewardTierId)) {
+        $rewardErrors[] = 'A reward tier for this required order count already exists.';
+    }
+
+    if (empty($rewardErrors)) {
+        $saved = saveRewardTier([
+            'required_orders' => $requiredOrders,
+            'discount_percent' => $discountPercent,
+            'points_cost' => $pointsCost,
+            'is_active' => $isActiveReward
+        ], $rewardTierId);
+
+        if ($saved) {
+            $_SESSION['reward_success'] = $rewardTierId ? 'Reward tier updated successfully.' : 'Reward tier created successfully.';
+            redirect('coupons.php#reward-tiers');
+        }
+
+        $rewardErrors[] = 'Failed to save reward tier. Please try again.';
+    }
+
+    $editingRewardTier = [
+        'id' => $rewardTierId,
+        'required_orders' => $requiredOrders,
+        'discount_percent' => $discountPercent,
+        'points_cost' => $pointsCost,
+        'is_active' => $isActiveReward
+    ];
+}
+
+$rewardErrors = array_merge($rewardErrors, $_SESSION['reward_errors'] ?? []);
+$rewardSuccess = $_SESSION['reward_success'] ?? '';
+unset($_SESSION['reward_errors'], $_SESSION['reward_success']);
+
 $coupons = getCoupons();
+$rewardTiers = getRewardTiers(false);
+$pointsPerOrder = getRewardsPointsPerOrder();
 
 include 'includes/header.php';
 ?>
 
 <div class="d-flex justify-content-between align-items-center mt-4 mb-3">
-    <h2 class="mb-0">Coupons</h2>
+    <h2 class="mb-0">Coupons and Rewards</h2>
     <a href="coupons.php" class="btn btn-outline-secondary btn-sm">Clear form</a>
 </div>
 
@@ -169,13 +323,161 @@ include 'includes/header.php';
                                             class="btn btn-sm btn-outline-primary">Edit</a>
                                         <a href="coupons.php?delete=<?php echo $coupon['id']; ?>"
                                             class="btn btn-sm btn-outline-danger"
-                                            onclick="return confirm('Delete this coupon?');">Delete</a>
+                                            data-confirm="Delete this coupon?"
+                                            data-confirm-variant="danger"
+                                            data-confirm-accept="Delete Coupon">Delete</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php endif; ?>
                     </tbody>
                 </table>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4" id="shipping-settings">
+            <div class="card-header bg-info text-white d-flex flex-column">
+                <h5 class="mb-1">Shipping Fee Settings</h5>
+                <small class="text-white-50">Automatically applies during checkout distance calculations.</small>
+            </div>
+            <div class="card-body">
+                <?php if (!empty($shippingErrors)): ?>
+                    <div class="alert alert-danger">
+                        <?php foreach ($shippingErrors as $shippingError): ?>
+                            <div><?php echo htmlspecialchars($shippingError); ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($shippingSuccess): ?>
+                    <div class="alert alert-success">
+                        <?php echo htmlspecialchars($shippingSuccess); ?>
+                    </div>
+                <?php endif; ?>
+
+                <form method="POST" class="row g-3">
+                    <input type="hidden" name="update_shipping_settings" value="1">
+                    <div class="col-12">
+                        <p class="text-muted small mb-2">
+                            Rates are matched automatically based on the words in the customer's saved address. Keep the spelling of
+                            <strong>Roxas</strong> and <strong>Oriental Mindoro</strong> consistent in your guidance.
+                        </p>
+                    </div>
+
+                    <div class="col-md-4">
+                        <label class="form-label">Roxas + Oriental Mindoro (city)</label>
+                        <input type="number" min="0" step="0.01" name="zone_roxas_fee" class="form-control"
+                            value="<?php echo htmlspecialchars(number_format((float) ($shippingFormValues['zone_roxas_fee'] ?? 0), 2, '.', '')); ?>">
+                        <small class="text-muted">Applied when the address contains both “Roxas” and “Oriental Mindoro”.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Oriental Mindoro (outside Roxas)</label>
+                        <input type="number" min="0" step="0.01" name="zone_oriental_fee" class="form-control"
+                            value="<?php echo htmlspecialchars(number_format((float) ($shippingFormValues['zone_oriental_fee'] ?? 0), 2, '.', '')); ?>">
+                        <small class="text-muted">Used when “Oriental Mindoro” is present but “Roxas” is not.</small>
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label">Outside Oriental Mindoro</label>
+                        <input type="number" min="0" step="0.01" name="zone_out_province_fee" class="form-control"
+                            value="<?php echo htmlspecialchars(number_format((float) ($shippingFormValues['zone_out_province_fee'] ?? 0), 2, '.', '')); ?>">
+                        <small class="text-muted">Fallback rate when the address doesn't mention “Oriental Mindoro”.</small>
+                    </div>
+
+                    <div class="col-12">
+                        <ul class="small text-muted ps-3 mb-0">
+                            <li>Customers with Roxas addresses should include “Roxas, Oriental Mindoro” for the local fee.</li>
+                            <li>Addresses that mention Oriental Mindoro but not Roxas are charged with the provincial rate.</li>
+                            <li>Any address without “Oriental Mindoro” is treated as out-of-province.</li>
+                        </ul>
+                    </div>
+
+                    <div class="col-12">
+                        <label class="form-label">Google Maps API Key (optional)</label>
+                        <input type="text" name="google_maps_api_key" class="form-control"
+                            placeholder="Stored for address geocoding"
+                            value="<?php echo htmlspecialchars($shippingFormValues['google_maps_api_key'] ?? ''); ?>">
+                        <small class="text-muted">Used only for background geocoding when customers save new addresses.</small>
+                    </div>
+
+                    <div class="col-12">
+                        <button type="submit" class="btn btn-info text-white w-100">Save Shipping Fees</button>
+                    </div>
+                </form>
+
+                <hr>
+
+                <div class="small text-muted">
+                    <div><strong>Reminder:</strong> Coach customers to include their city plus “Oriental Mindoro” so the correct fee triggers.</div>
+                    <div><strong>Last updated:</strong> <?php echo htmlspecialchars($shippingLastUpdatedLabel); ?>
+                        <?php if ($shippingUpdatedByLabel): ?>
+                            by <?php echo htmlspecialchars($shippingUpdatedByLabel); ?>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4" id="reward-tiers">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <div>
+                    <h5 class="mb-0">Reward Milestones</h5>
+                    <small>Customers unlock tiers by total non-cancelled orders and redeem points for percent-off discounts.</small>
+                </div>
+                <span class="badge bg-dark">+<?php echo (int) $pointsPerOrder; ?> pts / order</span>
+            </div>
+            <div class="card-body">
+                <?php if (!empty($rewardErrors)): ?>
+                    <div class="alert alert-danger">
+                        <?php foreach ($rewardErrors as $rewardError): ?>
+                            <div><?php echo htmlspecialchars($rewardError); ?></div>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
+
+                <?php if ($rewardSuccess): ?>
+                    <div class="alert alert-success"><?php echo htmlspecialchars($rewardSuccess); ?></div>
+                <?php endif; ?>
+
+                <?php if (empty($rewardTiers)): ?>
+                    <div class="text-muted">No reward tiers configured yet.</div>
+                <?php else: ?>
+                    <div class="table-responsive">
+                        <table class="table table-striped align-middle mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Required Orders</th>
+                                    <th>Discount</th>
+                                    <th>Points Cost</th>
+                                    <th>Status</th>
+                                    <th class="text-end">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach ($rewardTiers as $tier): ?>
+                                    <tr>
+                                        <td><?php echo (int) $tier['required_orders']; ?> orders</td>
+                                        <td><?php echo number_format((float) $tier['discount_percent'], 2); ?>%</td>
+                                        <td><?php echo (int) $tier['points_cost']; ?> pts</td>
+                                        <td>
+                                            <span class="badge <?php echo !empty($tier['is_active']) ? 'bg-success' : 'bg-secondary'; ?>">
+                                                <?php echo !empty($tier['is_active']) ? 'Active' : 'Inactive'; ?>
+                                            </span>
+                                        </td>
+                                        <td class="text-end">
+                                            <a href="coupons.php?edit_reward=<?php echo (int) $tier['id']; ?>#reward-tiers"
+                                                class="btn btn-sm btn-outline-primary">Edit</a>
+                                            <a href="coupons.php?delete_reward=<?php echo (int) $tier['id']; ?>#reward-tiers"
+                                                class="btn btn-sm btn-outline-danger"
+                                                data-confirm="Delete this reward tier?"
+                                                data-confirm-variant="danger"
+                                                data-confirm-accept="Delete Tier">Delete</a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -265,6 +567,47 @@ include 'includes/header.php';
                         <button type="submit" name="save_coupon" class="btn btn-success">Save Coupon</button>
                         <?php if ($editingCoupon): ?>
                             <a href="coupons.php" class="btn btn-outline-secondary">Cancel Edit</a>
+                        <?php endif; ?>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="card border-0 shadow-sm mt-4">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><?php echo $editingRewardTier ? 'Edit Reward Tier' : 'Create Reward Tier'; ?></h5>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    Example: 5 orders = 5% off for 30 points, 10 orders = 10% off for 60 points.
+                </p>
+                <form method="POST">
+                    <input type="hidden" name="reward_tier_id" value="<?php echo htmlspecialchars($editingRewardTier['id'] ?? ''); ?>">
+                    <div class="mb-3">
+                        <label class="form-label">Required Orders</label>
+                        <input type="number" min="1" name="required_orders" class="form-control" required
+                            value="<?php echo htmlspecialchars((string) ($editingRewardTier['required_orders'] ?? '')); ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Discount Percent (%)</label>
+                        <input type="number" min="0.01" max="100" step="0.01" name="discount_percent" class="form-control" required
+                            value="<?php echo htmlspecialchars((string) ($editingRewardTier['discount_percent'] ?? '')); ?>">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Points Cost</label>
+                        <input type="number" min="0" step="1" name="points_cost" class="form-control" required
+                            value="<?php echo htmlspecialchars((string) ($editingRewardTier['points_cost'] ?? '0')); ?>">
+                        <small class="text-muted">Points deducted once the user redeems this tier during checkout.</small>
+                    </div>
+                    <div class="form-check form-switch my-3">
+                        <input class="form-check-input" type="checkbox" role="switch" name="reward_is_active" id="reward_is_active"
+                            <?php echo !isset($editingRewardTier['is_active']) || !empty($editingRewardTier['is_active']) ? 'checked' : ''; ?>>
+                        <label class="form-check-label" for="reward_is_active">Reward tier is active</label>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <button type="submit" name="save_reward_tier" class="btn btn-warning text-dark">Save Reward Tier</button>
+                        <?php if ($editingRewardTier): ?>
+                            <a href="coupons.php#reward-tiers" class="btn btn-outline-secondary">Cancel Edit</a>
                         <?php endif; ?>
                     </div>
                 </form>
